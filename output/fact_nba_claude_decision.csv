@@ -1,1 +1,3 @@
 nba_run_id,member_gap_key,member_key,measure_key,measure_code,plan_key,measurement_year,is_in_selected_opportunity,cohort_id,cohort_name,cohort_priority_rank,nba_action_type,final_channel,final_incentive,priority_score,sla_days_to_contact,expected_gap_closure_lift,reason_codes,explanation_text,decision_timestamp
+RUN_PHASE1_20260512_104500,G00008,MBR0008,M003,EED,P003,2026,true,,,,,,,62,,,,,
+RUN_PHASE1_20260512_104500,G00009,MBR0009,M003,EED,P003,2026,true,,,,,,,53,,,,,
