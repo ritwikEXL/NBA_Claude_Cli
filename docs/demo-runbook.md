@@ -44,8 +44,9 @@ The demo is a single CLI conversation. The presenter plays the role of the plan 
 
 ### Step 1 — Start the session
 
-> Operator types:
-> **`Start an NBA_Claude_DemoV1 Stars demo run.`**
+> Operator types either the full prompt or the project shortcut:
+> - **`Start an NBA_Claude_DemoV1 Stars demo run.`**
+> - or **`/nba`** (project-scoped slash command — equivalent shortcut).
 
 - Claude announces a fresh `nba_run_id` (e.g., `RUN_YYYYMMDD_HHMMSS`) and orients the manager.
 - Claude enters Phase 1 (Opportunity Selection) and presents 2–3 ranked opportunities derived from the input data.
