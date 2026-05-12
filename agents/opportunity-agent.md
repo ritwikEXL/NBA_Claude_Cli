@@ -58,3 +58,51 @@ The Opportunity Agent writes only the **opportunity scoping layer** of `output/f
   - All cohort, channel, incentive, SLA, and explanation fields are left **null** at this stage.
 
 Gaps that fall **outside** the selected opportunity do **not** get rows in `fact_nba_claude_decision.csv` for this run. The Opportunity Agent's responsibility ends once the in-scope `member_gap_key` set is established.
+
+## Implementation Notes: Writing to fact_nba_claude_decision.csv
+
+These notes describe the **concrete file-write behavior** the Opportunity Agent must perform once the plan manager confirms an opportunity. They turn the conceptual contract above into an executable sequence.
+
+1. **Identify in-scope gaps**
+   - Treat the chosen opportunity as a specific combination of:
+     - `measure_key` / `measure_code`
+     - `plan_key`
+     - `measurement_year`
+   - Read `input/fact_member_gap.csv` and select all rows whose keys match this opportunity **and** where:
+     - `gap_status` is **not** `"Closed"` (i.e., keep `Open`, `Partial`, `Borderline`), and
+     - `is_suppressed` is `false`.
+   - The resulting set of `member_gap_key` values is the in-scope population for this run.
+
+2. **Prepare rows for `output/fact_nba_claude_decision.csv`**
+   - For each in-scope `member_gap_key`, prepare exactly one output row with the following fields:
+     - `nba_run_id` — the current session's run id (provided by the orchestrator at session start; reused identically across all rows this agent writes).
+     - `member_gap_key`, `member_key`, `measure_key`, `measure_code`, `plan_key`, `measurement_year` — copied verbatim from the input gap row.
+     - `is_in_selected_opportunity` = `true`.
+     - `cohort_id`, `cohort_name`, `cohort_priority_rank` — **left blank/null** (the Segmentation Agent will fill these in Phase 2).
+     - `nba_action_type`, `final_channel`, `final_incentive`, `sla_days_to_contact`, `expected_gap_closure_lift`, `reason_codes`, `explanation_text` — **left blank/null** (the Campaign and Outreach Agents will fill these in Phases 3 and 4).
+     - `decision_timestamp` — leave blank/null at this stage; later agents update it when they finalize the decision.
+     - `priority_score` — set to a **simple initial value on a 0–100 scale** derived from a transparent rule combining:
+       - `days_open` (longer-open → higher score)
+       - `nba_propensity_score` (higher propensity → higher score)
+       - `gap_status` severity (`Open` > `Partial` > `Borderline`)
+       - For example: `priority_score = round( 100 * (0.4 * normalized_days_open + 0.4 * nba_propensity_score + 0.2 * status_weight) )`, where `status_weight` is `1.0` for Open, `0.6` for Partial, `0.3` for Borderline. The exact formula is a placeholder — keep it simple, explainable, and stable across the run.
+
+3. **Append to `output/fact_nba_claude_decision.csv` (append-only behavior)**
+   - Use filesystem/file-editing tools to:
+     - Read the existing contents of `output/fact_nba_claude_decision.csv` (header plus any prior rows from earlier runs).
+     - **Append** the new rows after the header and any existing data — never rewrite or reorder existing rows.
+   - Do **not** alter the header row, change column order, or quote columns differently from the existing file.
+   - Guard against duplicates: if a row for the same `(nba_run_id, member_gap_key)` pair already exists in the file (e.g., from an aborted prior attempt in the same session), do not write a second copy. Deduplicate in-memory before appending.
+   - Preserve consistent value formats: booleans as lowercase `true`/`false`, dates as ISO `YYYY-MM-DD`, numeric scores without trailing whitespace.
+
+4. **Respect separation of concerns**
+   - This agent MUST NOT:
+     - Assign cohorts (`cohort_id`, `cohort_name`, `cohort_priority_rank`).
+     - Choose channels or incentives (`final_channel`, `final_incentive`).
+     - Set action type, SLA, expected lift, reason codes, or explanation text.
+     - Write to any other output CSVs (`dim_nba_campaign.csv`, `fact_nba_outreach_plan.csv`, `fact_nba_trace.csv`).
+   - This agent ONLY:
+     - Decides which opportunity to pursue.
+     - Materializes the in-scope gaps for this run in `fact_nba_claude_decision.csv` with `is_in_selected_opportunity = true` and an initial `priority_score`.
+
+**Confirmation and preview gate.** All of the steps above run **only after** the plan manager explicitly confirms the chosen opportunity (e.g., picks option A/B/C). Before actually appending rows, the agent should show a short business-language summary of what it is about to write — the chosen measure × plan, the count of in-scope `member_gap_key` rows, and the `nba_run_id` for traceability — so the manager has a final chance to redirect.
