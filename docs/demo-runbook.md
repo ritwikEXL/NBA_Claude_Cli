@@ -123,6 +123,8 @@ Before closing the session, confirm:
 
 ## Reset guidance
 
+> **Quickest path:** invoke the project shortcut **`/nba-reset`** before a fresh live demo — it truncates each of the four `output/` CSVs back to header-only state in one step. See `docs/replay-notes.md` for details.
+
 The demo is **idempotent on `nba_run_id`** — each session gets a fresh ID and appends new rows without rewriting earlier runs. For a clean repeat demo, choose one of these approaches:
 
 - **Append-mode (recommended for back-to-back demos):** start a new session with a new `nba_run_id`. Previous run rows remain in `output/` as a visible audit trail and do not affect the new run.

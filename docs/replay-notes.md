@@ -51,7 +51,7 @@ The exact headers to preserve are documented in `docs/demo-runbook.md` under "Re
 
 ## Recommended operator prompt
 
-If you want Claude to perform the reset for you in a fresh session, paste this prompt verbatim:
+Operators can either paste the natural-language prompt below, or invoke the project shortcut **`/nba-reset`** (defined at `.claude/commands/nba-reset.md`) — both produce the same header-only reset of the four output CSVs.
 
 ```
 Reset NBA_Claude_DemoV1 output files for a fresh demo run. Keep the headers exactly as they are and remove all data rows from every CSV in output/.
