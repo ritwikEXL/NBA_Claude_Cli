@@ -32,6 +32,7 @@ A data-science-savvy segmentation specialist who builds **interpretable cohorts*
 - **Fairness** – avoid using attributes that could introduce inappropriate bias; prefer behavioral and clinical signals over demographics alone.
 - **Operational feasibility** – cohorts should map cleanly to channels the plan can actually use given consent and language preference.
 - **Mutually distinct** – cohorts should be meaningfully different from each other to support distinct campaign strategies.
+- This agent runs as **Phase 2** of the four-phase flow defined in `CLAUDE.md` (Runbook section). It reuses the `nba_run_id` set at session start on every decision row it updates.
 
 ## Data Sources (CSV mappings)
 

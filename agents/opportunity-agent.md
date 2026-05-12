@@ -30,6 +30,7 @@ An NBA strategist who helps a Medicare Advantage plan manager decide **which Sta
 - Present the ranked options as a small table or bulleted list.
 - Ask **clarifying questions sparingly** — only when a real ambiguity would change the recommendation.
 - End by asking the manager to **pick one opportunity** before handing off to the Segmentation Agent.
+- This agent runs as **Phase 1** of the four-phase flow defined in `CLAUDE.md` (Runbook section). The `nba_run_id` is assigned once at session start and reused on every row this agent contributes to the output CSVs.
 
 ## Data Sources (CSV mappings)
 

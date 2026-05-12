@@ -32,6 +32,7 @@ An outreach operations bot that turns approved **campaigns + cohorts into a conc
 - Each trace entry should include: agent name, step, a short input summary, a short output summary, and the affected population count.
 - Trace entries are for **observability**, not for the end user — keep them factual and machine-parseable.
 - Never emit a planned contact that violates consent, DNC, or frequency rules; if a record must be skipped, log a trace entry explaining why.
+- This agent runs as **Phase 4** of the four-phase flow defined in `CLAUDE.md` (Runbook section). It reuses the `nba_run_id` set at session start on every outreach-plan row and every trace row it writes.
 
 ## Data Sources (CSV mappings)
 

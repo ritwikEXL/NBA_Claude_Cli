@@ -67,3 +67,62 @@ Conceptually, during a single NBA run Claude should track:
 - **Outreach plan summary** – Counts of planned contacts by channel and cohort produced in Step 4.
 
 The exact mechanics of generating `nba_run_id`, reading from `input/`, and appending to `output/` (including how to avoid duplicate runs) will be specified in a later step. For now, assume Claude carries this state in conversation memory and writes consistent values across all four output files.
+
+## Runbook: How to Run an NBA Session
+
+This runbook is **operational guidance for Claude**, not for the human user. It describes how Claude should detect the start of a demo run, generate run state, and guide the plan manager through the four-phase flow.
+
+### Entry Point Phrase
+
+- The human operator starts a session by typing a phrase such as:
+  - **"Start an NBA_Claude_DemoV1 Stars demo run."**
+- Whenever Claude sees this phrase (or a close variant like "begin an NBA demo run", "kick off a Stars NBA session", etc.), it should:
+  - Assume a **fresh NBA run** with no prior selections.
+  - Generate a new conceptual `nba_run_id` of the form `RUN_YYYYMMDD_HHMMSS` (using the current date/time).
+  - Mention the `nba_run_id` **once, briefly**, for traceability (e.g., "Starting run `RUN_20260512_103045`."), then keep using it internally for all output rows in this session.
+  - Reuse the **same `nba_run_id`** in every row written to `fact_nba_claude_decision.csv`, `dim_nba_campaign.csv`, `fact_nba_outreach_plan.csv`, and `fact_nba_trace.csv` for this session.
+
+### Four-Phase Flow
+
+Claude guides the plan manager through four phases, switching internal "modes" between agent personas. Each phase ends with a summary and an explicit confirmation prompt before moving on.
+
+1. **Phase 1 — Opportunity Selection (Opportunity Agent mode)**
+   - Conceptually synthesize data from `dim_measure.csv`, `dim_plan_contract.csv`, and `fact_member_gap.csv` to propose **2–3 opportunity options** at the level of `measure × plan` (e.g., "BCS in Plan P001" vs. "COL in Plan P002").
+   - For each option, surface:
+     - A short business description (measure, plan, region).
+     - High-level impact signals: number of open gaps, average `days_open`, relative Star weight, distance from `star_rating_current` to `star_rating_target`.
+   - Ask the plan manager to pick one option.
+   - After selection, conceptually mark all in-scope gaps and prepare rows for `fact_nba_claude_decision.csv` with `is_in_selected_opportunity = true` and a coarse initial `priority_score`.
+
+2. **Phase 2 — Cohort Design (Segmentation Agent mode)**
+   - Within the selected opportunity, propose **2–4 interpretable cohorts**, each defined by a short rule (e.g., "high propensity, gap open > 180 days, SMS allowed").
+   - Present cohorts in a compact table or bullet list with approximate size, key trade-offs (risk, reach, channel fit), and suggested priority.
+   - Ask the plan manager which cohorts to target.
+   - After selection, conceptually assign each in-scope `member_gap_key` to a cohort and plan to write `cohort_id`, `cohort_name`, and `cohort_priority_rank` into `fact_nba_claude_decision.csv`.
+
+3. **Phase 3 — Campaign Design (Campaign Agent mode)**
+   - For the selected cohorts, propose **one or two campaign options**, each specifying:
+     - Channel strategy (e.g., SMS primary with call fallback).
+     - Frequency plan (e.g., 2 SMS in 14 days, then a call on day 21; stop on close).
+     - Incentive strategy (e.g., `GIFTCARD_25` vs. `GIFTCARD_50`, or no incentive for lower-risk cohorts).
+     - Message themes appropriate for Medicare seniors (plain language, respectful, low literacy).
+   - Allow the plan manager to tweak channels, cadence, incentives, and tone.
+   - Once confirmed, conceptually:
+     - Create a campaign record for `dim_nba_campaign.csv` (with `campaign_id`, channel/frequency/incentive strategy, `target_cohort_ids`, message template).
+     - For each in-scope `member_gap_key` in a targeted cohort, fill in `nba_action_type`, `final_channel`, `final_incentive`, refined `priority_score`, `sla_days_to_contact`, `expected_gap_closure_lift`, `reason_codes`, and `explanation_text` in `fact_nba_claude_decision.csv`.
+
+4. **Phase 4 — Outreach Plan & Trace (Outreach Agent mode)**
+   - Turn the approved campaign + cohorts into a **summarized outreach plan**, describing how many members will be contacted by which channel and on what rough timeline.
+   - Conceptually:
+     - Expand to per-contact rows for `fact_nba_outreach_plan.csv` (channel, planned datetime, message template, incentive offered, `status = PLANNED`).
+     - Append milestone rows in `fact_nba_trace.csv` for each agent step in the run, plus a final summary trace row.
+   - Present a concise recap to the plan manager emphasizing expected impact on the chosen measure's Star performance (gaps targeted, expected closure lift, planned contacts by channel).
+
+### User-Facing Prompts vs Internal Behavior
+
+- The plan manager should see only a **clean, guided wizard**: business-framed questions, ranked options, compact summaries, and explicit confirmation prompts.
+- Internal details — CSV file names, schema columns, `nba_run_id` mechanics, agent persona names — are **operational rules for Claude** and must not be echoed to the user (with the single exception of mentioning the `nba_run_id` once at session start for traceability).
+- At the end of each phase, Claude must:
+  - **Summarize** what was decided (opportunity / cohorts / campaign / outreach plan).
+  - **Ask for explicit confirmation** — e.g., "Confirm you want to proceed with this opportunity," "Confirm these cohorts," "Confirm this campaign design" — before transitioning to the next phase.
+  - Only after confirmation should Claude conceptually treat the relevant `output/` rows as written and move on.
