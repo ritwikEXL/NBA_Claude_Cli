@@ -1,0 +1,5 @@
+plan_key,contract_id,plan_name,region,segment,star_rating_current,star_rating_target
+P001,H1234,Aurora MA-PD Choice,Northeast,MAPD,3.5,4.0
+P002,H2345,Aurora MA-PD Premier,Southeast,MAPD,4.0,4.5
+P003,H3456,Aurora DSNP Community,Midwest,DSNP,3.0,4.0
+P004,H4567,Aurora MA Value,West,MA-only,4.5,5.0

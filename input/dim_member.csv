@@ -1,0 +1,11 @@
+member_key,dob_year,age_band,gender,language_preference,digital_literacy_segment,socioeconomic_segment,pcp_provider_key
+MBR0001,1955,70-74,F,EN,High,Mid,PRV101
+MBR0002,1962,60-64,F,ES,Low,Low,PRV102
+MBR0003,1958,65-69,M,EN,Medium,Mid,PRV101
+MBR0004,1972,50-54,F,EN,High,High,PRV103
+MBR0005,1949,75-79,M,EN,Low,Low,PRV104
+MBR0006,1965,55-59,F,ZH,Medium,Mid,PRV105
+MBR0007,1953,70-74,M,EN,Medium,Low,PRV102
+MBR0008,1968,55-59,F,EN,High,High,PRV103
+MBR0009,1960,65-69,M,ES,Low,Low,PRV104
+MBR0010,1975,45-49,F,EN,High,Mid,PRV105

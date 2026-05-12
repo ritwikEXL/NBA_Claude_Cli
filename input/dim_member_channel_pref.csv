@@ -1,0 +1,11 @@
+member_key,email_allowed,sms_allowed,call_allowed,preferred_channel,do_not_contact_flag,channel_risk_notes
+MBR0001,true,true,true,EMAIL,false,Engaged via portal in last 90 days
+MBR0002,false,true,true,SMS,false,Spanish-language SMS preferred; no email on file
+MBR0003,true,false,true,CALL,false,Prefers live agent call in evenings
+MBR0004,true,true,false,EMAIL,false,Opted out of phone calls after prior complaint
+MBR0005,false,false,true,CALL,false,No digital channels; landline only
+MBR0006,true,true,true,SMS,false,Mandarin-language outreach required
+MBR0007,false,false,false,NONE,true,Member requested DNC in 2024
+MBR0008,true,true,true,EMAIL,false,High portal engagement
+MBR0009,false,true,true,CALL,false,Spanish bilingual call required; SMS backup
+MBR0010,true,true,true,SMS,false,Young senior; strong SMS responsiveness
