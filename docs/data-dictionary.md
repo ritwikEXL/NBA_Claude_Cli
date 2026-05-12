@@ -118,4 +118,4 @@ All output files live under `output/` and are written by the agents during a run
 
 ### `fact_nba_trace.csv`
 
-**Owned by the Outreach Agent (Phase 4), with milestone entries summarizing earlier phases.** One row per agent step — an audit trail of which agent did what, with short input/output summaries and `affected_population_count`. The recommended step set per run is `OPPORTUNITY_SELECTED`, `COHORTS_ASSIGNED`, `CAMPAIGNS_CREATED`, `OUTREACH_PLAN_CREATED`, and `RUN_SUMMARY`.
+**Written exclusively by the Outreach Agent in Phase 4.** One row per agent step — an audit trail of which agent did what, with short input/output summaries and `affected_population_count`. The `agent` column may reference earlier phases or agents (e.g., `Opportunity`, `Segmentation`, `Campaign`) to attribute the step, but **earlier agents do not write to this file directly** in the V1 design; the Outreach Agent emits all trace rows at the end of the run. The recommended step set per run is `OPPORTUNITY_SELECTED`, `COHORTS_ASSIGNED`, `CAMPAIGNS_CREATED`, `OUTREACH_PLAN_CREATED`, and `RUN_SUMMARY`.

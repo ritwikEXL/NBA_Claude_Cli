@@ -4,6 +4,8 @@
 
 This runbook is the **live-demo script** for NBA_Claude_DemoV1. It is intended for internal presenters showing the CSV-driven Next Best Action (NBA) workflow to Medicare Advantage plan leaders, clinical operations stakeholders, and Star/HEDIS strategy teams. It captures the suggested narrative, the exact CLI phrases to type, and what to highlight at each beat so the demo runs in roughly 10–15 minutes without surprises.
 
+> **Ships-with-example note.** NBA_Claude_DemoV1 currently ships with a worked example already present in `output/` (from `RUN_PHASE1_20260512_104500`). Operators can either review those artifacts as part of the walkthrough, or reset the outputs before a fresh live run by following `docs/replay-notes.md`.
+
 ## Demo objective
 
 Show how a busy Medicare plan manager can move from "where is the biggest Star gap?" to "which members do I target, and how?" in a single guided conversation, with:
