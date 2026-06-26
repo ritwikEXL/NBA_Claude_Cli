@@ -9,3 +9,13 @@ MBR0007,false,false,false,NONE,true,Member requested DNC in 2024
 MBR0008,true,true,true,EMAIL,false,High portal engagement
 MBR0009,false,true,true,CALL,false,Spanish bilingual call required; SMS backup
 MBR0010,true,true,true,SMS,false,Young senior; strong SMS responsiveness
+MBR0011,false,false,true,CALL,false,Older low-literacy member; landline only; no digital channels
+MBR0012,false,true,true,SMS,false,Spanish-speaking; prefers SMS; bilingual call as fallback
+MBR0013,true,true,true,EMAIL,false,High digital literacy; portal-active; all channels open
+MBR0014,false,false,true,CALL,false,Mandarin-speaking; no digital channels; in-language call required
+MBR0015,true,false,true,CALL,false,Prefers live agent; email on file but rarely checks; no SMS
+MBR0016,true,true,false,EMAIL,false,Spanish-bilingual; opted out of calls; email and SMS only
+MBR0017,false,false,false,NONE,true,Member requested DNC; do not contact
+MBR0018,true,true,true,SMS,false,Mandarin-language outreach required; SMS preferred; all channels open
+MBR0019,true,true,true,EMAIL,false,Mid-age active senior; high portal engagement; all channels open
+MBR0020,false,true,true,CALL,false,Spanish-speaking; low digital literacy; call primary with SMS backup

@@ -121,6 +121,67 @@ Before closing the session, confirm:
 - [ ] No file under `input/` was modified.
 - [ ] The headers and column order in all four output files are unchanged.
 
+## Extended Demo Options
+
+These are **optional storyline variations** for audiences that want to see specific capabilities beyond the standard happy path. Each variation uses the same `/nba` entry point — only the opportunity and cohort choices differ.
+
+### Variation 1 — CDC: The High-Stakes Chronic Condition Story
+
+**Best for:** Clinical ops audiences, CMO/CMO-adjacent stakeholders, or when you want to emphasize Star weight impact.
+
+**Setup context:** Controlling Blood Pressure (CDC) carries a `star_weight` of **2** — double the weight of BCS and the same as EED. P001 (Aurora MA-PD Choice) and P003 (Aurora DSNP Community) both have CDC gaps seeded in the data. This makes CDC a powerful "which measure moves the Star needle the most?" moment.
+
+**Suggested narrative:**
+1. Start `/nba` and note that when the Opportunity table appears, CDC entries will show `Star Weight: 2` alongside the gap count.
+2. Point out to the audience: *"Same number of gaps, but closing a CDC gap earns twice the Star credit as closing a BCS gap — that's the business case for measure prioritization."*
+3. Choose a CDC × P001 or CDC × P003 opportunity.
+4. In cohort design, highlight that CDC members tend to have **higher clinical risk scores** (0.60–0.85 in the seed data) — the cohort rules naturally surface a "high-risk, lower-propensity" group that needs a different outreach strategy than a screening measure.
+5. In campaign design, emphasize that no FIT kit or mammogram scheduling is involved — this is **pure behavior change outreach** (BP monitoring, medication adherence), which skews toward call-based channels and empathetic, low-literacy messaging.
+
+**Key talking point:** *"CDC at star_weight 2 is where clinical outcomes and Star rating strategy converge. The NBA workflow doesn't just find the easiest closes — it helps you find the highest-value closes."*
+
+---
+
+### Variation 2 — COL: FIT_KIT_MAILER as the Primary Incentive
+
+**Best for:** Operations and member experience audiences focused on access barriers and non-monetary incentives.
+
+**Setup context:** COL (Colorectal Cancer Screening) has multiple eligible members across all four original plans. The campaign agent is now explicitly instructed to default to `FIT_KIT_MAILER` as the primary incentive for high-propensity COL cohorts — because mailing a FIT kit removes the scheduling burden entirely and is often more effective than a gift card for this measure.
+
+**Suggested narrative:**
+1. Start `/nba` and choose a COL opportunity (any plan has addressable COL gaps).
+2. In campaign design, point out that Claude recommends `FIT_KIT_MAILER` for the C1 cohort rather than a gift card: *"For colorectal screening, the barrier is usually logistics, not motivation. A FIT kit in the mail removes that barrier — the member never has to schedule anything."*
+3. For any cohort member flagged as low-SES, Claude will also surface `TRANSPORT_VOUCHER` as an alternative — demonstrate the two-incentive decision side by side.
+4. Ask the audience: *"Which would you choose for a 68-year-old, English-speaking, digitally engaged member versus a 72-year-old Spanish-speaking, low-SES member?"* — the cohort rules answer this automatically.
+
+**Key talking point:** *"This is what member-level personalization looks like at scale. The incentive isn't just 'a reward' — it's matched to the actual barrier the member faces."*
+
+---
+
+### Variation 3 — P005: The Turnaround Story
+
+**Best for:** Executive audiences, board-level presentations, or when you want to show the NBA workflow applied to a plan with the most room to grow.
+
+**Setup context:** Aurora MA-PD Signature (P005) has a current Star rating of **2.5** with a target of **3.0** — the largest absolute gap in the portfolio and the only plan below 3 stars. It has 10 seeded gaps across EED and BCS, with a mix of new members (MBR0011–MBR0020) representing the demographics the plan hasn't reached yet: older low-literacy members, Mandarin-speaking seniors, Spanish-speaking low-SES members, and a DNC member.
+
+**Suggested narrative:**
+1. Start `/nba` and note that P005 appears in the Opportunity table with `2.5 → 3.0 (+0.5★)`.
+2. Point out that while the Star gap is "only" +0.5, the **starting point of 2.5 is existential** for a Medicare plan — below 3.0 triggers CMS sanctions and enrollment restrictions. *"This isn't an improvement story. This is a survival story."*
+3. Choose an EED × P005 or BCS × P005 opportunity.
+4. In cohort design, the new member pool surfaces natural complexity — a high-digital, high-propensity member sits alongside a Mandarin-speaking low-SES member and potentially a DNC member (who is correctly suppressed and excluded). Let the audience see the suppression logic working.
+5. In campaign design, highlight the multi-language, multi-channel nature of the outreach: *"Three members, three languages, three different channel strategies — all from a single NBA session."*
+6. Close with: *"P005 going from 2.5 to 3.0 isn't just a Star improvement. It's the difference between a plan that survives and one that faces CMS action. The NBA workflow finds the members who can close that gap — and it does it in one conversation."*
+
+**Key talking point:** *"The stakes are highest for the plans at the bottom of the Star scale. This is where targeted, personalized outreach has the most leverage — and where the NBA workflow delivers the most value."*
+
+---
+
+### Variation tips for all three
+
+- You can combine variations: e.g., open with the Opportunities tab on the dashboard to show the full ranked radar table, then switch to the CLI to run the chosen opportunity end to end.
+- For P005 specifically, reset outputs first (`/nba-reset`) so the audience sees a clean slate with only P005 rows written — the audit trail is more compelling when it contains exactly one run.
+- If an audience member asks "what about the DNC member?" — let Claude demonstrate the suppression: start a P005 run, note MBR0017 is excluded from cohorts, and show that no contact row is generated for them in `fact_nba_outreach_plan.csv`.
+
 ## Reset guidance
 
 > **Quickest path:** invoke the project shortcut **`/nba-reset`** before a fresh live demo — it truncates each of the four `output/` CSVs back to header-only state in one step. See `docs/replay-notes.md` for details.

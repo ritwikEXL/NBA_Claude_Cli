@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CareIntel — Medicare Stars NBA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+/* ── Variables ─────────────────────────────────────────────────────── */
+:root{
+  --teal:#1F6F5C;--teal-m:#2A9476;--teal-l:#3DB48C;--teal-ll:#EAF6F2;--teal-lll:#F5FBF9;
+  --amber:#D97706;--amber-l:#FEF3C7;
+  --red:#DC2626;--red-l:#FEE2E2;
+  --green:#15803D;--green-l:#DCFCE7;
+  --blue:#1D4ED8;--blue-l:#DBEAFE;
+  --purple:#7C3AED;--purple-l:#EDE9FE;
+  --g900:#111827;--g800:#1F2937;--g600:#4B5563;--g400:#9CA3AF;--g200:#E5E7EB;--g100:#F3F4F6;--g50:#F9FAFB;
+  --white:#fff;
+  --nav-h:56px;
+  --r:8px;--r-sm:5px;--r-lg:12px;
+  --shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+  --shadow-md:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1);
+}
+/* ── Reset & Base ──────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:14px;color:var(--g900);background:var(--g50);line-height:1.5}
+button{font-family:inherit;cursor:pointer;border:none;outline:none}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:.45rem .7rem;white-space:nowrap}
+th{font-size:.72rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--g600);background:var(--g50);border-bottom:1px solid var(--g200)}
+td{border-bottom:1px solid var(--g100);font-size:.81rem}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--g50)}
+/* ── Nav ───────────────────────────────────────────────────────────── */
+#nav{
+  position:fixed;top:0;left:0;right:0;height:var(--nav-h);z-index:100;
+  background:var(--teal);color:var(--white);
+  display:flex;align-items:center;gap:.75rem;padding:0 1.25rem;
+  box-shadow:0 2px 8px rgba(0,0,0,.2);
+}
+.nav-brand{display:flex;align-items:center;gap:.6rem;flex-shrink:0}
+.nav-mark{
+  width:30px;height:30px;border-radius:6px;
+  background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.3);
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+}
+.nav-brand strong{font-size:.95rem;letter-spacing:.01em}
+.nav-brand span{font-size:.71rem;opacity:.75;display:block;line-height:1}
+.nav-sep{width:1px;height:28px;background:rgba(255,255,255,.2);margin:0 .4rem}
+.nav-tabs{display:flex;gap:.25rem;flex:1}
+.nav-tab{
+  padding:.28rem .85rem;border-radius:6px;font-size:.81rem;font-weight:500;
+  background:transparent;color:rgba(255,255,255,.72);border:1.5px solid transparent;
+  transition:all .15s;
+}
+.nav-tab:hover{background:rgba(255,255,255,.1);color:var(--white)}
+.nav-tab.active{background:rgba(255,255,255,.18);color:var(--white);border-color:rgba(255,255,255,.3)}
+.nav-right{display:flex;align-items:center;gap:.75rem;flex-shrink:0}
+.status-pill{
+  display:flex;align-items:center;gap:.4rem;
+  background:rgba(255,255,255,.12);border-radius:20px;
+  padding:.2rem .65rem;font-size:.75rem;color:rgba(255,255,255,.9);
+}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#6EE7B7;transition:background .4s}
+.status-dot.active{background:#FCD34D;animation:pulse-dot 1.6s ease-in-out infinite}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.35}}
+.run-id-badge{
+  font-size:.71rem;font-family:monospace;
+  background:rgba(255,255,255,.12);padding:.2rem .6rem;border-radius:4px;
+  color:rgba(255,255,255,.85);display:none;
+}
+.run-id-badge.visible{display:block}
+/* ── Page & Views ──────────────────────────────────────────────────── */
+#page{margin-top:var(--nav-h)}
+.view{display:none;padding:1.4rem 1.75rem}
+.view.active{display:block}
+/* ── Stat Strip ────────────────────────────────────────────────────── */
+.stat-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.2rem}
+.stat-card{
+  background:var(--white);border-radius:var(--r);padding:.9rem 1rem;
+  box-shadow:var(--shadow);border-top:3px solid var(--teal);
+}
+.stat-card .label{font-size:.71rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--g600)}
+.stat-card .val{font-size:1.65rem;font-weight:700;color:var(--g900);line-height:1.2;margin:.2rem 0}
+.stat-card .sub{font-size:.74rem;color:var(--g400)}
+/* ── Section Headers ───────────────────────────────────────────────── */
+.section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:.65rem}
+.section-head h2{font-size:.9rem;font-weight:700;color:var(--g900)}
+.section-head small,.section-head .sub{font-size:.74rem;color:var(--g400)}
+/* ── Badges ────────────────────────────────────────────────────────── */
+.badge{display:inline-block;padding:.13rem .5rem;border-radius:20px;font-size:.69rem;font-weight:600;letter-spacing:.03em}
+.badge-high{background:#FEF9C3;color:#854D0E;border:1px solid #FDE68A}
+.badge-medium{background:#DBEAFE;color:#1E40AF;border:1px solid #BFDBFE}
+.badge-low{background:#F0FDF4;color:#166534;border:1px solid #BBF7D0}
+.badge-teal{background:var(--teal-ll);color:var(--teal);border:1px solid #A7D9C8}
+.badge-amber{background:var(--amber-l);color:var(--amber)}
+.badge-green{background:var(--green-l);color:var(--green)}
+.badge-gray{background:var(--g100);color:var(--g600)}
+.ch-EMAIL{background:#EDE9FE;color:#6D28D9;padding:.13rem .45rem;border-radius:4px;font-size:.69rem;font-weight:600}
+.ch-SMS{background:#FEF3C7;color:#92400E;padding:.13rem .45rem;border-radius:4px;font-size:.69rem;font-weight:600}
+.ch-CALL{background:#DCFCE7;color:#166534;padding:.13rem .45rem;border-radius:4px;font-size:.69rem;font-weight:600}
+/* ── Score Bar ─────────────────────────────────────────────────────── */
+.score-bar{display:flex;align-items:center;gap:.45rem}
+.score-bar .track{flex:1;height:5px;background:var(--g200);border-radius:3px;overflow:hidden}
+.score-bar .fill{height:100%;border-radius:3px;background:var(--teal-m)}
+.score-bar .num{font-size:.76rem;font-weight:600;color:var(--g800);width:2.6rem;text-align:right}
+/* ── Star Weight Dots ──────────────────────────────────────────────── */
+.sw-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:.3rem;vertical-align:middle}
+.sw-1{background:#9CA3AF}.sw-1-5{background:#60A5FA}.sw-2{background:#F59E0B}
+/* ── Opportunities Table ───────────────────────────────────────────── */
+.opp-table-wrap{background:var(--white);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:auto}
+.opp-table td{vertical-align:middle}
+.measure-name{font-weight:600;font-size:.81rem;color:var(--g900)}
+.measure-sub{font-size:.7rem;color:var(--g400);font-weight:400;display:block;white-space:normal;max-width:190px}
+.plan-name{font-weight:600;font-size:.81rem}
+.plan-sub{font-size:.7rem;color:var(--g400);display:block}
+.star-prog{font-size:.77rem;display:flex;align-items:center;gap:.3rem}
+.star-now{font-weight:700;color:var(--g800)}
+.star-target{color:var(--teal);font-weight:700}
+.composite-score{font-size:.84rem;font-weight:700;color:var(--g900)}
+.select-opp-btn{
+  padding:.28rem .75rem;border-radius:6px;font-size:.74rem;font-weight:600;
+  background:var(--teal);color:var(--white);border:none;cursor:pointer;
+  transition:background .15s;white-space:nowrap;
+}
+.select-opp-btn:hover{background:var(--teal-m)}
+/* ── Run Session Layout ────────────────────────────────────────────── */
+.run-layout{display:grid;grid-template-columns:41% 1fr;gap:1.2rem;align-items:start}
+/* ── Stepper ───────────────────────────────────────────────────────── */
+.stepper{background:var(--white);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:1.1rem 1rem}
+.stepper-title{font-size:.79rem;font-weight:700;color:var(--g800);margin-bottom:.9rem;padding-bottom:.5rem;border-bottom:1px solid var(--g200);font-family:monospace}
+.step-row{display:flex;gap:.7rem;position:relative}
+.step-row:not(:last-child)::after{content:'';position:absolute;left:13px;top:27px;bottom:-12px;width:2px;background:var(--g200);z-index:0}
+.step-row.completed::after{background:var(--teal-l)}
+.step-row+.step-row{margin-top:12px}
+.step-dot{
+  width:27px;height:27px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.73rem;font-weight:700;z-index:1;
+  background:var(--g200);color:var(--g600);border:2px solid var(--g200);transition:all .25s;
+}
+.step-row.active .step-dot{background:var(--teal);color:var(--white);border-color:var(--teal);box-shadow:0 0 0 4px var(--teal-ll)}
+.step-row.completed .step-dot{background:var(--green);color:var(--white);border-color:var(--green)}
+.step-body{flex:1;min-width:0;padding-bottom:.4rem}
+.step-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:.12rem}
+.step-agent{font-size:.81rem;font-weight:700;color:var(--g900)}
+.step-role{font-size:.71rem;color:var(--g400);margin-bottom:.45rem}
+.step-summary{font-size:.75rem;color:var(--teal);background:var(--teal-lll);padding:.28rem .5rem;border-radius:4px;margin-top:.2rem}
+.step-badge-pending{font-size:.67rem;color:var(--g400);background:var(--g100);padding:.1rem .4rem;border-radius:20px}
+.step-badge-active{font-size:.67rem;color:var(--amber);background:var(--amber-l);padding:.1rem .4rem;border-radius:20px;font-weight:600}
+.step-badge-done{font-size:.67rem;color:var(--green);background:var(--green-l);padding:.1rem .4rem;border-radius:20px;font-weight:600}
+/* ── Step Content ──────────────────────────────────────────────────── */
+.step-content{margin-top:.45rem;display:flex;flex-direction:column;gap:.55rem}
+.opp-sel-cards{display:flex;flex-direction:column;gap:.45rem}
+.opp-sel-card{
+  border:2px solid var(--g200);border-radius:var(--r);padding:.65rem .75rem;cursor:pointer;
+  transition:border-color .15s,box-shadow .15s;background:var(--white);
+}
+.opp-sel-card:hover{border-color:var(--teal-m)}
+.opp-sel-card.selected{border-color:var(--teal);box-shadow:0 0 0 3px rgba(31,111,92,.12);background:var(--teal-lll)}
+.opp-sel-card .osc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.25rem}
+.opp-sel-card .osc-title{font-size:.8rem;font-weight:700;color:var(--g900)}
+.opp-sel-card .osc-meta{display:flex;gap:.55rem;flex-wrap:wrap;font-size:.71rem;color:var(--g600)}
+.cohort-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}
+.cohort-card{border:1px solid var(--g200);border-radius:var(--r);padding:.7rem;background:var(--white)}
+.cohort-card.c1{border-top:3px solid var(--teal)}
+.cohort-card.c2{border-top:3px solid var(--amber)}
+.cohort-card .cc-name{font-size:.77rem;font-weight:700;color:var(--g900);margin-bottom:.22rem}
+.cohort-card .cc-rule{font-size:.68rem;color:var(--g600);margin-bottom:.38rem;line-height:1.4}
+.cohort-card .cc-stats{display:flex;flex-direction:column;gap:.18rem}
+.cohort-card .cc-stat{display:flex;justify-content:space-between;font-size:.71rem}
+.cohort-card .cc-stat .k{color:var(--g400)}.cohort-card .cc-stat .v{font-weight:600;color:var(--g800)}
+.camp-grid{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}
+.camp-card{
+  border:2px solid var(--g200);border-radius:var(--r);padding:.7rem;cursor:pointer;
+  transition:all .15s;position:relative;background:var(--white);
+}
+.camp-card:hover{border-color:var(--teal-m)}
+.camp-card.selected{border-color:var(--teal);background:var(--teal-lll)}
+.camp-card .rec-badge{
+  position:absolute;top:-.5rem;right:.55rem;
+  font-size:.64rem;font-weight:700;background:var(--teal);color:var(--white);
+  padding:.08rem .42rem;border-radius:20px;
+}
+.camp-card .cc-name{font-size:.76rem;font-weight:700;color:var(--g900);margin-bottom:.2rem}
+.camp-card .cc-desc{font-size:.68rem;color:var(--g600);margin-bottom:.35rem;line-height:1.4}
+.camp-card .cc-row{display:flex;gap:.3rem;font-size:.7rem;margin-bottom:.18rem;align-items:flex-start}
+.camp-card .cc-row .k{color:var(--g400);flex-shrink:0;width:3.2rem}
+.camp-card .cc-row .v{color:var(--g800);font-weight:500}
+.camp-card .cc-tradeoff{font-size:.68rem;color:var(--g600);border-top:1px solid var(--g200);margin-top:.35rem;padding-top:.35rem}
+.step4-loading{display:flex;align-items:center;gap:.55rem;padding:.45rem;color:var(--g600);font-size:.77rem}
+.spinner{width:17px;height:17px;border:2px solid var(--g200);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.outreach-summary{background:var(--teal-lll);border:1px solid #C3E6DA;border-radius:var(--r);padding:.7rem}
+.outreach-summary .os-title{font-size:.77rem;font-weight:700;color:var(--teal);margin-bottom:.35rem}
+.outreach-summary .os-row{display:flex;justify-content:space-between;font-size:.73rem;margin-bottom:.18rem}
+.outreach-summary .os-row .k{color:var(--g600)}.outreach-summary .os-row .v{font-weight:600;color:var(--g900)}
+.channel-breakdown{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.35rem}
+.btn{padding:.42rem 1rem;border-radius:6px;font-size:.79rem;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--teal);color:var(--white);border:none}
+.btn-primary:hover{background:var(--teal-m)}
+.btn-secondary{background:var(--white);color:var(--teal);border:1.5px solid var(--teal)}
+.btn-secondary:hover{background:var(--teal-lll)}
+.btn-ghost{background:var(--white);color:var(--g600);border:1.5px solid var(--g200)}
+.btn-ghost:hover{background:var(--g100)}
+.btn-row{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.5rem}
+.no-session{background:var(--white);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:2rem;text-align:center}
+.no-session h2{font-size:1rem;font-weight:700;color:var(--g900);margin-bottom:.4rem}
+.no-session p{font-size:.79rem;color:var(--g600);margin-bottom:1rem}
+.no-session .hint{font-size:.72rem;color:var(--g400);margin-top:.4rem}
+.success-banner{
+  background:var(--green-l);border:1.5px solid #86EFAC;border-radius:var(--r);
+  padding:.7rem .9rem;display:flex;align-items:center;gap:.55rem;margin-top:.6rem;
+  animation:fadeIn .4s ease;
+}
+.success-banner .sb-icon{font-size:1.1rem}
+.success-banner .sb-text strong{font-size:.8rem;color:var(--green);display:block}
+.success-banner .sb-text span{font-size:.73rem;color:var(--g600)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+/* ── Right Panel ───────────────────────────────────────────────────── */
+.run-right{display:flex;flex-direction:column;gap:.9rem}
+.kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem}
+.kpi-tile{
+  background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);
+  padding:.8rem .9rem;border-left:3px solid var(--teal);
+}
+.kpi-tile .kpi-label{font-size:.69rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--g600)}
+.kpi-tile .kpi-val{font-size:1.35rem;font-weight:700;color:var(--g900);line-height:1.2;margin:.18rem 0}
+.kpi-tile .kpi-sub{font-size:.69rem;color:var(--g400)}
+.kpi-tile.dim .kpi-val{color:var(--g300)}
+.pipeline{display:flex;align-items:stretch;background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.pipe-agent{flex:1;padding:.6rem .55rem;border-right:1px solid var(--g100);text-align:center;transition:all .3s}
+.pipe-agent:last-child{border-right:none}
+.pipe-agent.active{background:var(--teal-ll);animation:pulse-bg 2s ease-in-out infinite}
+.pipe-agent.done{background:var(--green-l)}
+@keyframes pulse-bg{0%,100%{background:var(--teal-ll)}50%{background:#D1EFE7}}
+.pipe-agent .pa-name{font-size:.71rem;font-weight:700;color:var(--g800);margin-bottom:.18rem}
+.pipe-agent .pa-status{font-size:.66rem;color:var(--g400)}
+.pipe-agent.active .pa-status{color:var(--teal);font-weight:600}
+.pipe-agent.done .pa-status{color:var(--green);font-weight:600}
+.pipe-agent .pa-summary{font-size:.65rem;color:var(--g600);margin-top:.18rem;white-space:normal;line-height:1.3}
+.pipe-arrow{display:flex;align-items:center;background:var(--white);padding:0 .08rem;color:var(--g300);font-size:.85rem}
+.table-wrap{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);overflow:auto;max-height:260px}
+.empty-table{padding:1.4rem;text-align:center;color:var(--g400);font-size:.77rem}
+.trace-new{animation:fadeIn .5s ease forwards}
+.loading-opp{padding:3rem;text-align:center;color:var(--g400);font-size:.81rem;display:flex;flex-direction:column;align-items:center;gap:.7rem}
+.loading-spinner{width:26px;height:26px;border:3px solid var(--g200);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite}
+.error-banner{background:var(--red-l);border:1.5px solid #FECACA;border-radius:var(--r);padding:.7rem 1rem;color:var(--red);font-size:.79rem}
+.mt-xs{margin-top:.35rem}.mt-sm{margin-top:.65rem}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ─────────────────────────────────────────────────────────── -->
+<nav id="nav">
+  <div class="nav-brand">
+    <div class="nav-mark">⚕</div>
+    <div>
+      <strong>CareIntel</strong>
+      <span>Medicare Stars · Next Best Action</span>
+    </div>
+  </div>
+  <div class="nav-sep"></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-action="switch-tab" data-val="opp">Opportunities</button>
+    <button class="nav-tab" data-action="switch-tab" data-val="run">Run Session</button>
+  </div>
+  <div class="nav-right">
+    <div class="status-pill" id="api-status-pill">
+      <div class="status-dot" id="api-dot" style="background:#9CA3AF"></div>
+      <span id="api-text">Connecting…</span>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Ready</span>
+    </div>
+    <div class="run-id-badge" id="run-id-badge"></div>
+  </div>
+</nav>
+
+<!-- ── Page ─────────────────────────────────────────────────────────── -->
+<div id="page">
+  <div id="view-opp" class="view active"></div>
+  <div id="view-run" class="view">
+    <div class="run-layout">
+      <div id="run-left"></div>
+      <div class="run-right" id="run-right"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────────────
+   CareIntel NBA Dashboard — reads from FastAPI at localhost:8000
+───────────────────────────────────────────────────────────────────── */
+
+const API='http://localhost:8000';
+
+/* ── Utilities ─────────────────────────────────────────────────────── */
+function incLabel(c){return{GIFTCARD_15:'$15 Gift Card',GIFTCARD_25:'$25 Gift Card',FIT_KIT_MAILER:'FIT Kit Mailer',TRANSPORT_VOUCHER:'Transport Voucher'}[c]||c||'—'}
+function incCost(c){const m=(c||'').match(/GIFTCARD_(\d+)/);if(m)return+m[1];if(c==='FIT_KIT_MAILER')return 8;if(c==='TRANSPORT_VOUCHER')return 20;return 0}
+function tmpl(mc,lang){return`TMPL_${mc}_PLAIN${lang!=='EN'?'_'+lang:''}_V1`}
+function addDays(iso,n){const d=new Date(iso);d.setDate(d.getDate()+n);return d.toISOString().split('T')[0]}
+function pad2(n){return String(n).padStart(2,'0')}
+function nowIso(){return new Date().toISOString().split('.')[0]}
+
+/* ── API helpers ───────────────────────────────────────────────────── */
+async function apiGet(path){const r=await fetch(API+path);if(!r.ok)throw new Error(r.status);return r.json();}
+async function apiPost(path,body){
+  const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error(r.status);return r.json();
+}
+
+/* ── State ─────────────────────────────────────────────────────────── */
+const S={
+  tab:'opp',status:'idle',phase:0,
+  runId:null,loading:true,error:null,apiConnected:null,
+  memberMap:{},chanMap:{},
+  opportunities:[],
+  selectedOppIdx:null,selOpp:null,
+  inScopeGaps:[],cohorts:[],selCohorts:[],
+  campOptions:[],campIdx:null,campaign:null,campaignId:null,
+  step4Loading:false,
+  outreachRows:[],decisionRows:[],traceRows:[],
+  lastTraceSeen:0,
+  agentSt:{opp:'idle',seg:'idle',camp:'idle',out:'idle'},
+  agentSum:{opp:'',seg:'',camp:'',out:''},
+  kpis:{gaps:'—',contacts:'—',lift:'—',cost:'—'},
+  pollTimer:null,
+};
+
+/* ── API Health ────────────────────────────────────────────────────── */
+async function checkApiHealth(){
+  try{await apiGet('/opportunities');S.apiConnected=true;}
+  catch(e){S.apiConnected=false;}
+  renderApiStatus();
+}
+function renderApiStatus(){
+  const dot=document.getElementById('api-dot');
+  const txt=document.getElementById('api-text');
+  if(S.apiConnected===null){dot.style.background='#9CA3AF';txt.textContent='Connecting…';}
+  else if(S.apiConnected){dot.style.background='#6EE7B7';txt.textContent='API Connected';}
+  else{dot.style.background='#F87171';txt.textContent='API Offline';}
+}
+
+/* ── Data Loading ──────────────────────────────────────────────────── */
+async function loadData(){
+  S.loading=true;render();
+  try{
+    const [opps,members]=await Promise.all([apiGet('/opportunities'),apiGet('/members')]);
+    // Transform flat API response into nested shape expected by render functions
+    S.opportunities=opps.map(r=>({
+      measure_key:r.measure_key,plan_key:r.plan_key,
+      measure:{measure_key:r.measure_key,measure_code:r.measure_code,measure_name:r.measure_name,
+               hedis_domain:r.hedis_domain,star_weight:r.star_weight},
+      plan:{plan_key:r.plan_key,plan_name:r.plan_name,region:r.region,segment:r.segment,
+            star_rating_current:r.star_rating_current,star_rating_target:r.star_rating_target},
+      starWeight:r.star_weight,openCount:r.open_gap_count,
+      avgProp:r.avg_propensity,score:r.composite_score,priority:r.priority,
+      gaps:[],// loaded on-demand in confirmOpp
+    }));
+    // Build member & channel maps (joined rows from /members)
+    S.memberMap=Object.fromEntries(members.map(m=>[m.member_key,m]));
+    S.chanMap=Object.fromEntries(members.map(m=>[m.member_key,{
+      email_allowed:m.email_allowed,sms_allowed:m.sms_allowed,
+      call_allowed:m.call_allowed,preferred_channel:m.preferred_channel,
+      do_not_contact_flag:m.do_not_contact_flag,
+    }]));
+    S.apiConnected=true;S.loading=false;S.error=null;
+  }catch(e){
+    S.loading=false;
+    S.error='Cannot reach API at '+API+'. Make sure uvicorn is running on port 8000.';
+    S.apiConnected=false;
+  }
+  renderApiStatus();render();
+}
+
+/* ── Load Latest Session ───────────────────────────────────────────── */
+async function loadLatestSession(){
+  try{
+    const data=await apiGet('/session/latest');
+    if(!data.run_id)return;
+    S.runId=data.run_id;S.status='complete';S.phase=5;
+    S.traceRows=data.trace||[];
+    S.outreachRows=data.outreach||[];
+    S.decisionRows=data.decisions||[];
+    const dec=data.decisions||[];
+    const otr=data.outreach||[];
+    const avgLift=dec.length?Math.round(dec.reduce((s,r)=>s+(+(r.expected_gap_closure_lift)||0),0)/dec.length*100):0;
+    const totalCost=otr.reduce((s,r)=>s+incCost(r.incentive_offered),0);
+    S.kpis={gaps:[...new Set(dec.map(d=>d.member_gap_key))].length,contacts:otr.length,lift:`+${avgLift}%`,cost:`$${totalCost}`};
+    S.agentSt={opp:'done',seg:'done',camp:'done',out:'done'};
+    const find=step=>(S.traceRows.find(t=>t.step===step)||{}).output_summary||'';
+    S.agentSum={opp:find('OPPORTUNITY_SELECTED'),seg:find('COHORTS_ASSIGNED'),
+                camp:find('CAMPAIGN_CREATED'),out:find('OUTREACH_PLAN_CREATED')};
+    S.selCohorts=[];S.selOpp=null;// not needed for phase 5 display
+    S.tab='run';render();
+  }catch(e){/* no previous session or API offline */}
+}
+
+/* ── Session Start ─────────────────────────────────────────────────── */
+async function startSession(preIdx=null){
+  const mk=preIdx!==null?S.opportunities[preIdx]?.measure_key:null;
+  const pk=preIdx!==null?S.opportunities[preIdx]?.plan_key:null;
+  try{
+    const resp=await apiPost('/session/start',{measure_key:mk,plan_key:pk});
+    S.runId=resp.run_id;
+  }catch(e){
+    const n=new Date();
+    S.runId=`RUN_${n.getFullYear()}${pad2(n.getMonth()+1)}${pad2(n.getDate())}_${pad2(n.getHours())}${pad2(n.getMinutes())}${pad2(n.getSeconds())}`;
+  }
+  S.phase=1;S.status='active';
+  S.selectedOppIdx=preIdx;S.selOpp=null;
+  S.inScopeGaps=[];S.cohorts=[];S.selCohorts=[];
+  S.campOptions=[];S.campIdx=null;S.campaign=null;S.campaignId=null;
+  S.step4Loading=false;
+  S.outreachRows=[];S.decisionRows=[];S.traceRows=[];S.lastTraceSeen=0;
+  S.agentSt={opp:'active',seg:'idle',camp:'idle',out:'idle'};
+  S.agentSum={opp:'Scanning measures × plans…',seg:'',camp:'',out:''};
+  S.kpis={gaps:'—',contacts:'—',lift:'—',cost:'—'};
+  if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}
+  render();
+}
+
+function resetSession(){
+  S.phase=0;S.status='idle';S.runId=null;
+  S.agentSt={opp:'idle',seg:'idle',camp:'idle',out:'idle'};
+  S.agentSum={opp:'',seg:'',camp:'',out:''};
+  S.kpis={gaps:'—',contacts:'—',lift:'—',cost:'—'};
+  if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}
+  render();
+}
+
+/* ── Phase Confirmations ───────────────────────────────────────────── */
+async function confirmOpp(){
+  const o=S.opportunities[S.selectedOppIdx];
+  try{o.gaps=await apiGet(`/gaps/${o.measure_key}/${o.plan_key}`);}
+  catch(e){o.gaps=[];}
+  S.selOpp=o;
+  S.inScopeGaps=o.gaps.filter(g=>String(g.is_suppressed).toLowerCase()!=='true');
+  S.cohorts=generateCohorts(S.inScopeGaps,o.measure.measure_code||'');
+  S.kpis.gaps=S.inScopeGaps.length;
+  S.agentSt.opp='done';
+  S.agentSum.opp=`${o.measure.measure_code} × ${o.plan.plan_name} — ${S.inScopeGaps.length} gaps in scope`;
+  S.traceRows.push({nba_run_id:S.runId,timestamp:nowIso(),agent:'Opportunity',step:'OPPORTUNITY_SELECTED',
+    input_summary:`${S.opportunities.length} measure × plan combos scanned`,
+    output_summary:`${o.measure.measure_code} × ${o.plan.plan_name} selected; ${S.inScopeGaps.length} addressable gaps; star_weight=${o.starWeight}`,
+    affected_population_count:S.inScopeGaps.length});
+  S.agentSt.seg='active';S.agentSum.seg=`Segmenting ${S.inScopeGaps.length} members…`;
+  S.phase=2;render();
+}
+
+function confirmCohorts(both){
+  S.selCohorts=both?[...S.cohorts]:[S.cohorts[0]].filter(Boolean);
+  S.campOptions=generateCampaignOptions();
+  const tot=S.selCohorts.reduce((s,c)=>s+c.gaps.length,0);
+  S.agentSt.seg='done';
+  S.agentSum.seg=`${S.selCohorts.length} cohort${S.selCohorts.length>1?'s':''} · ${tot} members`;
+  S.traceRows.push({nba_run_id:S.runId,timestamp:nowIso(),agent:'Segmentation',step:'COHORTS_ASSIGNED',
+    input_summary:`${S.inScopeGaps.length} in-scope gaps`,
+    output_summary:S.selCohorts.map(c=>`${c.id}(${c.gaps.length})`).join('; '),
+    affected_population_count:tot});
+  S.agentSt.camp='active';S.agentSum.camp='Designing campaign options…';
+  S.phase=3;render();
+}
+
+function confirmCampaign(){
+  S.campaign=S.campOptions[S.campIdx];
+  S.campaignId=`CMP_${S.runId.substring(4)}_01`;
+  S.agentSt.camp='done';S.agentSum.camp=S.campaign.name;
+  S.traceRows.push({nba_run_id:S.runId,timestamp:nowIso(),agent:'Campaign',step:'CAMPAIGN_CREATED',
+    input_summary:`${S.selCohorts.length} cohorts targeted`,
+    output_summary:`${S.campaignId}; ${S.campaign.channelSum}; ${S.campaign.incSum}`,
+    affected_population_count:S.selCohorts.reduce((s,c)=>s+c.gaps.length,0)});
+  S.agentSt.out='active';S.agentSum.out='Generating outreach plan…';
+  S.phase=4;S.step4Loading=true;render();
+  setTimeout(()=>{S.step4Loading=false;buildOutputs();render();},1600);
+}
+
+async function finalizeSession(){
+  const tot=S.selCohorts.reduce((s,c)=>s+c.gaps.length,0);
+  const ts=nowIso();
+  S.traceRows.push(
+    {nba_run_id:S.runId,timestamp:ts,agent:'Outreach',step:'OUTREACH_PLAN_CREATED',
+      input_summary:`1 campaign × ${S.selCohorts.length} cohorts × ${tot} gaps`,
+      output_summary:`${S.outreachRows.length} planned contacts`,affected_population_count:tot},
+    {nba_run_id:S.runId,timestamp:ts,agent:'Outreach',step:'RUN_SUMMARY',
+      input_summary:`${S.selOpp.measure.measure_code} × ${S.selOpp.plan.plan_name} complete`,
+      output_summary:`${tot} gaps targeted; ${S.outreachRows.length} contacts planned; ${S.kpis.lift} avg lift`,
+      affected_population_count:tot}
+  );
+  const campRow={
+    campaign_id:S.campaignId,nba_run_id:S.runId,
+    measure_key:S.selOpp.measure_key,plan_key:S.selOpp.plan_key,
+    campaign_name:S.campaign.name,
+    target_cohort_ids:S.selCohorts.map(c=>c.id).join(';'),
+    channel_strategy:S.campaign.channelSum,frequency_plan:S.campaign.freqSum,
+    message_template_id:'TMPL_'+S.selOpp.measure.measure_code+'_PLAIN_V1',
+    incentive_strategy:S.campaign.incSum,created_timestamp:ts,
+  };
+  try{
+    // Decisions and campaign in parallel, then outreach (bulk), then trace rows
+    await Promise.all([
+      ...S.decisionRows.map(r=>apiPost(`/session/${S.runId}/decision`,r)),
+      apiPost(`/session/${S.runId}/campaign`,campRow),
+    ]);
+    await apiPost(`/session/${S.runId}/outreach`,S.outreachRows);
+    for(const r of S.traceRows)await apiPost(`/session/${S.runId}/trace`,r);
+  }catch(e){console.warn('API write error:',e);}
+  S.phase=5;S.status='complete';render();
+  startPolling();
+}
+
+/* ── Polling ───────────────────────────────────────────────────────── */
+function startPolling(){
+  if(S.pollTimer)clearInterval(S.pollTimer);
+  S.pollTimer=setInterval(async()=>{
+    if(!S.runId||S.status==='idle'){clearInterval(S.pollTimer);return;}
+    try{
+      const data=await apiGet(`/session/${S.runId}/status`);
+      if(data.outreach?.length)S.outreachRows=data.outreach;
+      if(data.trace?.length)S.traceRows=data.trace;
+      renderRight();
+    }catch(e){}
+  },5000);
+}
+
+/* ── Data Builders ─────────────────────────────────────────────────── */
+function buildOutputs(){
+  const today=new Date().toISOString().split('T')[0];
+  const ctr=S.runId.split('_')[2];
+  const mCode=S.selOpp.measure.measure_code;
+  const allGaps=S.selCohorts.flatMap(c=>c.gaps);
+  const days=allGaps.map(g=>+(g.days_open)||0);
+  const maxD=Math.max(...days)||1,minD=Math.min(...days)||0;
+  let cn=1;const oRows=[],dRows=[];
+  for(const cohort of S.selCohorts){
+    for(const gap of cohort.gaps){
+      const mem=S.memberMap[gap.member_key]||{};
+      const chan=S.chanMap[gap.member_key]||{};
+      if(chan.do_not_contact_flag==='true')continue;
+      const lang=mem.language_preference||'EN';
+      const tpl=tmpl(mCode,lang);
+      const inc=cohort.incentive;
+      let ch1;
+      if(cohort.id==='C1_DIGITAL_HIGH_PROP'){
+        ch1=chan.email_allowed==='true'?'EMAIL':chan.sms_allowed==='true'?'SMS':'CALL';
+      }else{
+        const pref=chan.preferred_channel||'';
+        ch1=pref==='CALL'&&chan.call_allowed==='true'?'CALL':
+            chan.sms_allowed==='true'?'SMS':chan.email_allowed==='true'?'EMAIL':'CALL';
+      }
+      const contactDay=cohort.id==='C1_DIGITAL_HIGH_PROP'?1:10;
+      oRows.push({nba_run_id:S.runId,contact_id:`CT_${ctr}_${String(cn++).padStart(3,'0')}`,
+        member_gap_key:gap.member_gap_key,campaign_id:S.campaignId,channel:ch1,
+        planned_datetime:addDays(today,contactDay)+'T09:00:00',message_template_id:tpl,
+        incentive_offered:inc,status:'PLANNED',created_timestamp:today});
+      if(cohort.id==='C1_DIGITAL_HIGH_PROP'){
+        const ch2=S.campaign.id==='OPT1'?
+          (chan.sms_allowed==='true'&&ch1!=='SMS'?'SMS':null):
+          (chan.call_allowed==='true'?'CALL':null);
+        if(ch2)oRows.push({nba_run_id:S.runId,contact_id:`CT_${ctr}_${String(cn++).padStart(3,'0')}`,
+          member_gap_key:gap.member_gap_key,campaign_id:S.campaignId,channel:ch2,
+          planned_datetime:addDays(today,S.campaign.id==='OPT1'?7:14)+'T09:00:00',
+          message_template_id:tpl,incentive_offered:inc,status:'PLANNED',created_timestamp:today});
+      }else if(S.campaign.id==='OPT2'&&chan.sms_allowed==='true'&&ch1!=='SMS'){
+        oRows.push({nba_run_id:S.runId,contact_id:`CT_${ctr}_${String(cn++).padStart(3,'0')}`,
+          member_gap_key:gap.member_gap_key,campaign_id:S.campaignId,channel:'SMS',
+          planned_datetime:addDays(today,14)+'T09:00:00',
+          message_template_id:tpl,incentive_offered:inc,status:'PLANNED',created_timestamp:today});
+      }
+      const normD=maxD===minD?0.5:((+(gap.days_open)||0)-minD)/(maxD-minD);
+      const sw=gap.gap_status==='Open'?1.0:gap.gap_status==='Partial'?0.6:0.3;
+      const ps=Math.round(100*(0.4*normD+0.4*(+(gap.nba_propensity_score)||0)+0.2*sw));
+      const prop=+(gap.nba_propensity_score)||0;
+      const lift=Math.max(0.10,Math.min(0.30,
+        (cohort.id==='C1_DIGITAL_HIGH_PROP'?0.22:0.15)+(prop-0.5)*0.1+(gap.gap_status==='Borderline'?0.04:0)));
+      const codes=[];
+      if(prop>=0.70)codes.push('HIGH_PROP');else codes.push('MED_PROP');
+      if(mem.digital_literacy_segment==='High')codes.push('DIGITAL_OK');
+      if(mem.digital_literacy_segment==='Low')codes.push('LOW_DIGITAL');
+      if(mem.socioeconomic_segment==='Low')codes.push('LOW_SES');
+      if(lang!=='EN')codes.push('LANG_BARRIER');
+      if(chan.email_allowed==='true'&&chan.preferred_channel==='EMAIL')codes.push('EMAIL_PREF');
+      if(chan.call_allowed!=='true')codes.push('PHONE_OPTOUT');
+      if(gap.gap_status==='Borderline')codes.push('BORDERLINE');
+      if(gap.gap_status==='Partial')codes.push('PARTIAL_GAP');
+      if(gap.previous_year_gap_flag==='true')codes.push('PRIOR_YEAR_GAP');
+      dRows.push({nba_run_id:S.runId,member_gap_key:gap.member_gap_key,member_key:gap.member_key,
+        measure_key:gap.measure_key,measure_code:mCode,plan_key:gap.plan_key,
+        measurement_year:gap.measurement_year||'2026',is_in_selected_opportunity:'true',
+        cohort_id:cohort.id,cohort_name:cohort.name,cohort_priority_rank:cohort.priority,
+        nba_action_type:'OUTREACH_MEMBER',final_channel:ch1,final_incentive:inc,
+        priority_score:ps,sla_days_to_contact:contactDay,
+        expected_gap_closure_lift:Math.round(lift*100)/100,
+        reason_codes:codes.join(';'),
+        explanation_text:buildExpl(gap,mem,lang,ch1,inc,cohort),
+        decision_timestamp:today});
+    }
+  }
+  S.outreachRows=oRows;S.decisionRows=dRows;
+  const totalCost=oRows.reduce((s,r)=>s+incCost(r.incentive_offered),0);
+  const avgLift=dRows.length?Math.round(dRows.reduce((s,r)=>s+(+(r.expected_gap_closure_lift)||0),0)/dRows.length*100):0;
+  S.kpis={gaps:S.inScopeGaps.length,contacts:oRows.length,lift:`+${avgLift}%`,cost:`$${totalCost}`};
+  S.agentSt.out='done';S.agentSum.out=`${oRows.length} contacts planned across ${S.selCohorts.length} cohorts`;
+}
+
+function buildExpl(gap,mem,lang,ch,inc,cohort){
+  const p=+(gap.nba_propensity_score)||0;
+  const pts=[];
+  pts.push(p>=0.70?'High-propensity member':'Moderate-propensity member');
+  if(mem.digital_literacy_segment==='High')pts.push('digitally engaged');
+  if(lang==='ES')pts.push('Spanish-speaking');
+  if(lang==='ZH')pts.push('Mandarin-speaking');
+  if(mem.socioeconomic_segment==='Low')pts.push('low-SES');
+  pts.push(ch.toLowerCase()+' outreach');
+  pts.push(incLabel(inc)+' incentive');
+  if(gap.gap_status==='Borderline')pts.push('gap nearly closed');
+  return pts.join('; ')+'.';
+}
+
+/* ── Cohort & Campaign Generators ──────────────────────────────────── */
+function generateCohorts(gaps,mCode){
+  const c1=[],c2=[];
+  for(const g of gaps){
+    const m=S.memberMap[g.member_key]||{};
+    const c=S.chanMap[g.member_key]||{};
+    if(c.do_not_contact_flag==='true')continue;
+    const ok=m.digital_literacy_segment==='High'&&m.language_preference==='EN'&&
+              (+(g.nba_propensity_score)||0)>=0.60&&c.email_allowed==='true';
+    if(ok)c1.push(g);else c2.push(g);
+  }
+  const cohorts=[];
+  if(c1.length){
+    const inc=mCode==='COL'?'FIT_KIT_MAILER':mCode==='BCS'?'GIFTCARD_25':'GIFTCARD_15';
+    const avg=c1.reduce((s,g)=>s+(+(g.nba_propensity_score)||0),0)/c1.length;
+    cohorts.push({id:'C1_DIGITAL_HIGH_PROP',name:'Digital-first, high propensity',
+      rule:'English · high digital literacy · propensity ≥ 0.60 · email allowed',
+      gaps:c1,members:c1.map(g=>S.memberMap[g.member_key]).filter(Boolean),
+      priority:1,channelFit:'Email + SMS',avgProp:Math.round(avg*100)/100,incentive:inc});
+  }
+  if(c2.length){
+    const low=c2.some(g=>(S.memberMap[g.member_key]||{}).socioeconomic_segment==='Low');
+    const inc=low?'TRANSPORT_VOUCHER':'GIFTCARD_25';
+    const avg=c2.reduce((s,g)=>s+(+(g.nba_propensity_score)||0),0)/c2.length;
+    cohorts.push({id:'C2_ACCESS_BARRIER',name:'Access-barrier, high-touch',
+      rule:'Non-English OR low digital literacy OR channel-limited',
+      gaps:c2,members:c2.map(g=>S.memberMap[g.member_key]).filter(Boolean),
+      priority:2,channelFit:'Call / SMS (language-matched)',avgProp:Math.round(avg*100)/100,incentive:inc});
+  }
+  return cohorts;
+}
+
+function generateCampaignOptions(){
+  const mCode=S.selOpp.measure.measure_code;
+  const c1=S.selCohorts.find(c=>c.id==='C1_DIGITAL_HIGH_PROP');
+  const c2=S.selCohorts.find(c=>c.id==='C2_ACCESS_BARRIER');
+  const langs=[...new Set((c2?.members||[]).map(m=>m.language_preference))].filter(l=>l&&l!=='EN');
+  const c2ChDesc=langs.includes('ZH')?'Mandarin SMS/call':langs.includes('ES')?'Spanish bilingual call':'Call (preferred channel)';
+  const c1inc=c1?.incentive||'GIFTCARD_15';
+  const c2inc=c2?.incentive||'GIFTCARD_25';
+  return[
+    {id:'OPT1',name:'Lean Digital + Targeted High-Touch',
+      desc:'Cost-efficient: email/SMS for C1, single language-appropriate touch for C2.',
+      c1Ch:c1?`Email d1 → SMS d7 → stop on close`:'—',
+      c2Ch:c2?`${c2ChDesc} d10 → stop on close`:'—',
+      c1Inc:c1inc,c2Inc:c2inc,c1Freq:'Max 2 touches / 14 days',c2Freq:'1 touch / 10 days',
+      tradeoff:'Respects all channel consents · lowest cost · proven for digital members',
+      recommended:true,
+      channelSum:`C1:Email+SMS; C2:${c2ChDesc}`,freqSum:'C1:2/14d; C2:1/10d',
+      incSum:`C1:${incLabel(c1inc)}; C2:${incLabel(c2inc)}`},
+    {id:'OPT2',name:'Full High-Touch — Both Cohorts',
+      desc:'Adds call follow-up d14 for C1; upgrades C2 to 2 touches. Higher reach, higher cost.',
+      c1Ch:c1?'Email d1 → SMS d7 → call d14':'—',
+      c2Ch:c2?`${c2ChDesc} d10 → SMS d14`:'—',
+      c1Inc:'GIFTCARD_25',c2Inc:'GIFTCARD_25',
+      c1Freq:'Max 3 touches / 21 days',c2Freq:'2 touches / 14 days',
+      tradeoff:'⚠ Higher cost · check call opt-outs for C1 · better for low-propensity segments',
+      recommended:false,
+      channelSum:`C1:Email+SMS+Call; C2:${c2ChDesc}+SMS`,freqSum:'C1:3/21d; C2:2/14d',
+      incSum:'Both cohorts: $25 Gift Card'},
+  ];
+}
+
+/* ── Render: Nav ───────────────────────────────────────────────────── */
+function renderNav(){
+  const dot=document.getElementById('status-dot');
+  const txt=document.getElementById('status-text');
+  const badge=document.getElementById('run-id-badge');
+  if(S.status==='idle'){dot.className='status-dot';dot.style.background='';txt.textContent='Ready';badge.className='run-id-badge';}
+  else if(S.status==='active'){dot.className='status-dot active';txt.textContent='Session Active';badge.className='run-id-badge visible';badge.textContent=S.runId||'';}
+  else{dot.className='status-dot';dot.style.background='#86EFAC';txt.textContent='Session Complete';badge.className='run-id-badge visible';badge.textContent=S.runId||'';}
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.val===S.tab));
+  document.getElementById('view-opp').classList.toggle('active',S.tab==='opp');
+  document.getElementById('view-run').classList.toggle('active',S.tab==='run');
+}
+
+/* ── Render: Opportunities View ────────────────────────────────────── */
+function renderOpp(){
+  const el=document.getElementById('view-opp');
+  if(S.loading){el.innerHTML=`<div class="loading-opp"><div class="loading-spinner"></div>Loading from API…</div>`;return;}
+  if(S.error){el.innerHTML=`<div class="error-banner">⚠ ${S.error}</div>`;return;}
+  const ops=S.opportunities;
+  const highN=ops.filter(o=>o.priority==='High').length;
+  const totGaps=ops.reduce((s,o)=>s+o.openCount,0);
+  const avgProp=ops.length?(ops.reduce((s,o)=>s+o.avgProp,0)/ops.length).toFixed(2):'—';
+  el.innerHTML=`
+  <div class="stat-strip">
+    <div class="stat-card"><div class="label">Measure × Plan Combos</div><div class="val">${ops.length}</div><div class="sub">addressable opportunities</div></div>
+    <div class="stat-card"><div class="label">High Priority</div><div class="val" style="color:var(--amber)">${highN}</div><div class="sub">composite score ≥ 8.0</div></div>
+    <div class="stat-card"><div class="label">Total Open Gaps</div><div class="val">${totGaps}</div><div class="sub">across all measures &amp; plans</div></div>
+    <div class="stat-card"><div class="label">Avg Propensity</div><div class="val">${avgProp}</div><div class="sub">population-level</div></div>
+  </div>
+  <div class="section-head">
+    <h2>Opportunity Radar</h2>
+    <small>star weight × open gaps + avg propensity</small>
+  </div>
+  <div class="opp-table-wrap">
+    <table class="opp-table"><thead><tr>
+      <th>#</th><th>Measure</th><th>Plan</th>
+      <th>Star Weight</th><th>Stars Now → Target</th>
+      <th>Open Gaps</th><th>Avg Propensity</th>
+      <th>Score</th><th>Priority</th><th></th>
+    </tr></thead><tbody>
+    ${ops.map((o,i)=>{
+      const sw=o.starWeight;
+      const dc=sw===1?'sw-1':sw===1.5?'sw-1-5':'sw-2';
+      const now=parseFloat(o.plan.star_rating_current||0).toFixed(1);
+      const tgt=parseFloat(o.plan.star_rating_target||0).toFixed(1);
+      const pb=o.priority==='High'?'badge-high':o.priority==='Medium'?'badge-medium':'badge-low';
+      const pp=Math.round(o.avgProp*100);
+      return`<tr>
+        <td><strong>${i+1}</strong></td>
+        <td><span class="measure-name">${o.measure.measure_name||o.measure_key}</span><span class="measure-sub">${o.measure.hedis_domain||''}</span></td>
+        <td><span class="plan-name">${o.plan.plan_name||o.plan_key}</span><span class="plan-sub">${o.plan.region||''} · ${o.plan.segment||''}</span></td>
+        <td><span class="${dc} sw-dot"></span>${sw}</td>
+        <td><div class="star-prog"><span class="star-now">${now}★</span><span style="color:var(--g400)"> → </span><span class="star-target">${tgt}★</span></div></td>
+        <td><strong>${o.openCount}</strong></td>
+        <td><div class="score-bar"><div class="track"><div class="fill" style="width:${pp}%"></div></div><span class="num">${o.avgProp.toFixed(2)}</span></div></td>
+        <td><span class="composite-score">${o.score.toFixed(2)}</span></td>
+        <td><span class="badge ${pb}">${o.priority}</span></td>
+        <td><button class="select-opp-btn" data-action="sel-opp-radar" data-val="${i}">Select This Opportunity</button></td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>
+  </div>`;
+}
+
+/* ── Render: Run Left ──────────────────────────────────────────────── */
+function renderLeft(){
+  const el=document.getElementById('run-left');
+  if(S.phase===0){
+    el.innerHTML=`<div class="no-session">
+      <div style="font-size:2rem;margin-bottom:.75rem">🏥</div>
+      <h2>No Active Session</h2>
+      <p>Start a new NBA session to run the guided 4-phase workflow — or click <strong>Select This Opportunity</strong> on the Opportunities tab.</p>
+      <button class="btn btn-primary" data-action="start-session">Start New Session</button>
+      <p class="hint">Session ID generated by the API as RUN_YYYYMMDD_HHMMSS</p>
+    </div>`;
+    return;
+  }
+  const defs=[
+    {n:1,agent:'Opportunity Agent',role:'Identifies high-impact measure × plan combinations'},
+    {n:2,agent:'Segmentation Agent',role:'Builds interpretable member cohorts'},
+    {n:3,agent:'Campaign Design Agent',role:'Designs channel, frequency &amp; incentive strategy'},
+    {n:4,agent:'Outreach Agent',role:'Generates per-member contact plan &amp; writes outputs'},
+  ];
+  const trFind=step=>(S.traceRows.find(t=>t.step===step)||{}).output_summary||'';
+  const steps=defs.map(d=>{
+    const done=S.phase>d.n,act=S.phase===d.n;
+    const cls=done?'completed':act?'active':'pending';
+    const dot=done?'✓':d.n;
+    const badge=done?'<span class="step-badge-done">Completed</span>':
+                act?'<span class="step-badge-active">Active</span>':
+                '<span class="step-badge-pending">Pending</span>';
+    let sum='';
+    if(done){
+      if(d.n===1)sum=trFind('OPPORTUNITY_SELECTED')||(S.selOpp?`${S.selOpp.measure.measure_code} × ${S.selOpp.plan.plan_name} — ${S.inScopeGaps.length} gaps`:'Completed');
+      if(d.n===2)sum=trFind('COHORTS_ASSIGNED')||(S.selCohorts.length?`${S.selCohorts.length} cohorts · ${S.selCohorts.reduce((s,c)=>s+c.gaps.length,0)} members`:'Completed');
+      if(d.n===3)sum=trFind('CAMPAIGN_CREATED')||S.campaign?.name||'Completed';
+      if(d.n===4)sum=trFind('OUTREACH_PLAN_CREATED')||`${S.outreachRows.length} contacts · ${S.kpis.cost} est. spend`;
+    }
+    return`<div class="step-row ${cls}">
+      <div class="step-dot">${dot}</div>
+      <div class="step-body">
+        <div class="step-hdr"><span class="step-agent">${d.agent}</span>${badge}</div>
+        <div class="step-role">${d.role}</div>
+        ${done&&sum?`<div class="step-summary">✓ ${sum}</div>`:''}
+        ${act?renderStepContent(d.n):''}
+      </div>
+    </div>`;
+  }).join('');
+  const banner=S.phase===5?`<div class="success-banner">
+    <div class="sb-icon">✅</div>
+    <div class="sb-text">
+      <strong>Session Complete — ${S.runId}</strong>
+      <span>All outputs written to database. ${S.kpis.contacts} contacts planned.</span>
+    </div>
+  </div>`:'';
+  el.innerHTML=`
+  <div class="stepper">
+    <div class="stepper-title">${S.runId}</div>
+    ${steps}${banner}
+  </div>
+  ${S.phase===5?`<button class="btn btn-ghost" data-action="reset-session" style="width:100%;margin-top:.5rem">← Start New Session</button>`:''}`;
+}
+
+function renderStepContent(n){
+  if(n===1)return renderS1();
+  if(n===2)return renderS2();
+  if(n===3)return renderS3();
+  if(n===4)return renderS4();
+  return'';
+}
+
+function renderS1(){
+  const top=S.opportunities.slice(0,3);
+  const cards=top.map((o,i)=>{
+    const sel=S.selectedOppIdx===i?'selected':'';
+    const sw=o.starWeight;const dc=sw===1?'sw-1':sw===1.5?'sw-1-5':'sw-2';
+    const now=parseFloat(o.plan.star_rating_current||0).toFixed(1);
+    const tgt=parseFloat(o.plan.star_rating_target||0).toFixed(1);
+    return`<div class="opp-sel-card ${sel}" data-action="sel-opp" data-val="${i}">
+      <div class="osc-header"><span class="osc-title">${o.measure.measure_code} × ${o.plan.plan_name||o.plan_key}</span><span class="badge badge-teal">Score ${o.score.toFixed(1)}</span></div>
+      <div class="osc-meta">
+        <span><span class="${dc} sw-dot"></span>wt ${sw}</span>
+        <span>📊 ${o.openCount} gaps</span>
+        <span>⚡ ${o.avgProp.toFixed(2)} prop</span>
+        <span>⭐ ${now}→${tgt}</span>
+      </div>
+    </div>`;
+  }).join('');
+  return`<div class="step-content">
+    <div style="font-size:.73rem;color:var(--g600)">Select the opportunity to target:</div>
+    <div class="opp-sel-cards">${cards}</div>
+    ${S.selectedOppIdx!==null?
+      `<div class="btn-row"><button class="btn btn-primary" data-action="confirm-opp">Confirm Opportunity →</button></div>`:
+      `<div style="font-size:.71rem;color:var(--g400);text-align:center">Click a card to select</div>`}
+  </div>`;
+}
+
+function renderS2(){
+  const cards=S.cohorts.map((c,i)=>`
+    <div class="cohort-card ${i===0?'c1':'c2'}">
+      <div class="cc-name">${c.name}</div>
+      <div class="cc-rule">${c.rule}</div>
+      <div class="cc-stats">
+        <div class="cc-stat"><span class="k">Members</span><span class="v">${c.gaps.length}</span></div>
+        <div class="cc-stat"><span class="k">Channels</span><span class="v">${c.channelFit}</span></div>
+        <div class="cc-stat"><span class="k">Avg prop</span><span class="v">${c.avgProp}</span></div>
+        <div class="cc-stat"><span class="k">Incentive</span><span class="v">${incLabel(c.incentive)}</span></div>
+      </div>
+    </div>`).join('');
+  return`<div class="step-content">
+    <div class="cohort-grid">${cards}</div>
+    <div class="btn-row">
+      ${S.cohorts.length>=2?`<button class="btn btn-primary" data-action="confirm-cohorts" data-val="both">Target Both Cohorts</button>`:''}
+      <button class="btn btn-secondary" data-action="confirm-cohorts" data-val="c1only">C1 Only</button>
+    </div>
+  </div>`;
+}
+
+function renderS3(){
+  const cards=S.campOptions.map((o,i)=>{
+    const sel=S.campIdx===i?'selected':'';
+    return`<div class="camp-card ${sel}" data-action="sel-camp" data-val="${i}">
+      ${o.recommended?'<div class="rec-badge">Recommended</div>':''}
+      <div class="cc-name">${o.name}</div>
+      <div class="cc-desc">${o.desc}</div>
+      <div class="cc-row"><span class="k">C1</span><span class="v">${o.c1Ch}</span></div>
+      <div class="cc-row"><span class="k">C2</span><span class="v">${o.c2Ch}</span></div>
+      <div class="cc-row"><span class="k">C1 incent.</span><span class="v">${incLabel(o.c1Inc)}</span></div>
+      <div class="cc-row"><span class="k">C2 incent.</span><span class="v">${incLabel(o.c2Inc)}</span></div>
+      <div class="cc-tradeoff">${o.tradeoff}</div>
+    </div>`;
+  }).join('');
+  return`<div class="step-content">
+    <div class="camp-grid">${cards}</div>
+    ${S.campIdx!==null?
+      `<div class="btn-row"><button class="btn btn-primary" data-action="confirm-camp">Confirm Campaign →</button></div>`:
+      `<div style="font-size:.71rem;color:var(--g400);text-align:center">Click an option to select</div>`}
+  </div>`;
+}
+
+function renderS4(){
+  if(S.step4Loading)return`<div class="step-content"><div class="step4-loading"><div class="spinner"></div>Generating outreach plan…</div></div>`;
+  const byCh={};for(const r of S.outreachRows)byCh[r.channel]=(byCh[r.channel]||0)+1;
+  const chBadges=Object.entries(byCh).map(([ch,n])=>`<span class="ch-${ch}">${n} ${ch}</span>`).join('');
+  const cost=S.outreachRows.reduce((s,r)=>s+incCost(r.incentive_offered),0);
+  return`<div class="step-content">
+    <div class="outreach-summary">
+      <div class="os-title">Outreach Plan Ready</div>
+      <div class="os-row"><span class="k">Total contacts</span><span class="v">${S.outreachRows.length}</span></div>
+      <div class="os-row"><span class="k">Members targeted</span><span class="v">${S.inScopeGaps.length}</span></div>
+      <div class="os-row"><span class="k">Estimated cost</span><span class="v">$${cost}</span></div>
+      <div class="channel-breakdown">${chBadges}</div>
+    </div>
+    ${S.phase<5?`<div class="btn-row"><button class="btn btn-primary" data-action="finalize">Confirm &amp; Finalise Outreach Plan ✓</button></div>`:''}
+  </div>`;
+}
+
+/* ── Render: Right Panel ───────────────────────────────────────────── */
+function renderRight(){
+  const el=document.getElementById('run-right');
+  const {gaps,contacts,lift,cost}=S.kpis;
+  const dim=v=>v==='—';
+  const kpis=`<div class="kpi-strip">
+    <div class="kpi-tile ${dim(gaps)?'dim':''}"><div class="kpi-label">Gaps Targeted</div><div class="kpi-val">${gaps}</div><div class="kpi-sub">addressable members</div></div>
+    <div class="kpi-tile ${dim(contacts)?'dim':''}"><div class="kpi-label">Planned Contacts</div><div class="kpi-val">${contacts}</div><div class="kpi-sub">outreach touches</div></div>
+    <div class="kpi-tile ${dim(lift)?'dim':''}"><div class="kpi-label">Expected Lift</div><div class="kpi-val" style="color:var(--teal)">${lift}</div><div class="kpi-sub">avg gap closure</div></div>
+    <div class="kpi-tile ${dim(cost)?'dim':''}"><div class="kpi-label">Incentive Cost</div><div class="kpi-val">${cost}</div><div class="kpi-sub">estimated total</div></div>
+  </div>`;
+  const agents=[{k:'opp',l:'Opportunity'},{k:'seg',l:'Segmentation'},{k:'camp',l:'Campaign'},{k:'out',l:'Outreach'}];
+  const pipeHtml=agents.map((a,i)=>{
+    const st=S.agentSt[a.k];const sum=S.agentSum[a.k];
+    const cls=st==='done'?'done':st==='active'?'active':'idle';
+    const ico=st==='done'?'✓':st==='active'?'⟳':'○';
+    const lbl=st==='done'?'Completed':st==='active'?'Active':'Waiting';
+    return`<div class="pipe-agent ${cls}">
+      <div class="pa-name">${ico} ${a.l}</div>
+      <div class="pa-status">${lbl}</div>
+      ${sum?`<div class="pa-summary">${sum}</div>`:''}
+    </div>${i<agents.length-1?'<div class="pipe-arrow">›</div>':''}`;
+  }).join('');
+  const otrRows=S.outreachRows.length?S.outreachRows.map(r=>{
+    const dk=S.decisionRows.find(d=>d.member_gap_key===r.member_gap_key);
+    return`<tr>
+      <td><code style="font-size:.7rem">${r.contact_id}</code></td>
+      <td>${r.member_gap_key}<br><small style="color:var(--g400)">${dk?.member_key||r.member_gap_key}</small></td>
+      <td><span class="ch-${r.channel}">${r.channel}</span></td>
+      <td>${r.planned_datetime?r.planned_datetime.substring(0,10):'—'}</td>
+      <td>${incLabel(r.incentive_offered)}</td>
+      <td><code style="font-size:.68rem">${r.message_template_id}</code></td>
+      <td><span class="badge badge-teal">PLANNED</span></td>
+    </tr>`;
+  }).join(''):null;
+  const trcRows=S.traceRows.length?S.traceRows.map((r,i)=>`<tr class="${i>=S.lastTraceSeen?'trace-new':''}">
+    <td><code style="font-size:.69rem">${r.timestamp?String(r.timestamp).substring(11,19):'—'}</code></td>
+    <td><strong>${r.agent}</strong></td>
+    <td><span class="badge badge-gray">${r.step}</span></td>
+    <td style="white-space:normal;max-width:220px;font-size:.73rem">${r.output_summary}</td>
+    <td><span class="badge badge-teal">${r.affected_population_count}</span></td>
+  </tr>`).join(''):null;
+  S.lastTraceSeen=S.traceRows.length;
+  el.innerHTML=`
+  ${kpis}
+  <div class="section-head mt-xs"><h2>Agent Pipeline</h2><small>Live session progress</small></div>
+  <div class="pipeline">${pipeHtml}</div>
+  <div class="section-head mt-sm"><h2>Outreach Plan</h2><small>${S.outreachRows.length} planned contacts</small></div>
+  <div class="table-wrap">${otrRows?`<table><thead><tr><th>Contact ID</th><th>Gap / Member</th><th>Channel</th><th>Planned Date</th><th>Incentive</th><th>Template</th><th>Status</th></tr></thead><tbody>${otrRows}</tbody></table>`:`<div class="empty-table">Outreach plan will appear after campaign confirmation.</div>`}</div>
+  <div class="section-head mt-sm"><h2>Audit Trace</h2><small>${S.traceRows.length} milestone steps</small></div>
+  <div class="table-wrap">${trcRows?`<table><thead><tr><th>Time</th><th>Agent</th><th>Step</th><th>Output Summary</th><th>Pop</th></tr></thead><tbody>${trcRows}</tbody></table>`:`<div class="empty-table">Audit trace will appear as each agent completes.</div>`}</div>`;
+}
+
+/* ── Main Render ───────────────────────────────────────────────────── */
+function render(){
+  renderNav();
+  if(S.tab==='opp')renderOpp();
+  else{renderLeft();renderRight();}
+}
+
+/* ── Events ────────────────────────────────────────────────────────── */
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-action]');if(!el)return;
+  const a=el.dataset.action,v=el.dataset.val;
+  switch(a){
+    case 'switch-tab':     S.tab=v;render();break;
+    case 'sel-opp-radar':  startSession(+v).then(()=>{S.tab='run';render();});break;
+    case 'start-session':  startSession().then(()=>render());break;
+    case 'sel-opp':        S.selectedOppIdx=+v;render();break;
+    case 'confirm-opp':    if(S.selectedOppIdx!==null)confirmOpp();break;
+    case 'confirm-cohorts':confirmCohorts(v==='both');break;
+    case 'sel-camp':       S.campIdx=+v;render();break;
+    case 'confirm-camp':   if(S.campIdx!==null)confirmCampaign();break;
+    case 'finalize':       finalizeSession();break;
+    case 'reset-session':  resetSession();break;
+  }
+});
+
+/* ── Init ──────────────────────────────────────────────────────────── */
+checkApiHealth();
+loadData().then(loadLatestSession);
+</script>
+</body>
+</html>
