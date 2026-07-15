@@ -467,8 +467,7 @@ const API=(()=>{
   if(meta&&meta.content)return meta.content.replace(/\/$/,'');
   if(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')
     return 'http://localhost:8000';
-  // Production Render API — replace RENDER_API_URL_PLACEHOLDER after deployment
-  return 'RENDER_API_URL_PLACEHOLDER';
+  return 'https://nba-claude-cli.onrender.com';
 })();
 
 /* ── Utilities ─────────────────────────────────────────────────────── */
