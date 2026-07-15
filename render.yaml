@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: careintel-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_SENDER_EMAIL
+        sync: false
+      - key: TEST_SMS_NUMBER
+        sync: false
+      - key: TEST_EMAIL
+        sync: false
+      - key: DB_PATH
+        value: /opt/render/project/src/careintel.db

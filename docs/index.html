@@ -467,8 +467,8 @@ const API=(()=>{
   if(meta&&meta.content)return meta.content.replace(/\/$/,'');
   if(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')
     return 'http://localhost:8000';
-  // Cloudflare Tunnel public URL for the API
-  return 'https://hebrew-steps-emotional-juice.trycloudflare.com';
+  // Production Render API — replace RENDER_API_URL_PLACEHOLDER after deployment
+  return 'RENDER_API_URL_PLACEHOLDER';
 })();
 
 /* ── Utilities ─────────────────────────────────────────────────────── */
