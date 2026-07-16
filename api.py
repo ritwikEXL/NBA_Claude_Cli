@@ -22,7 +22,7 @@ import anthropic
 from pyngrok import ngrok as pyngrok_tunnel
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from twilio.rest import Client as TwilioClient
@@ -230,6 +230,11 @@ async def startup_event():
 
 
 # ── POST /session/start ───────────────────────────────────────────────────────
+
+@app.get("/dashboard")
+def serve_dashboard():
+    dashboard_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "index.html")
+    return FileResponse(dashboard_path, media_type="text/html")
 
 @app.post("/session/start", status_code=201)
 def start_session(body: dict[str, Any] = None):
