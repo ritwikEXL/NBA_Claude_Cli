@@ -194,10 +194,15 @@ with get_db() as _mc:
 async def startup_event():
     # ── Auto-seed database if missing or empty (Render cold start) ────────────
     try:
-        needs_seed = (
-            not os.path.exists(DB_PATH) or
-            os.path.getsize(DB_PATH) < 10_000
-        )
+        needs_seed = True
+        if os.path.exists(DB_PATH):
+            try:
+                import sqlite3 as _sq3
+                with _sq3.connect(DB_PATH) as _c:
+                    _c.execute("SELECT 1 FROM fact_member_gap LIMIT 1")
+                needs_seed = False
+            except Exception:
+                needs_seed = True
         if needs_seed:
             logging.info("[startup] Database missing or empty — running seed_demo_data.py")
             import subprocess
