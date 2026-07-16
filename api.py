@@ -2,6 +2,7 @@
 """CareIntel NBA FastAPI — connects to careintel.db."""
 
 import os
+import sys
 import ssl
 import csv
 import io
@@ -202,7 +203,7 @@ async def startup_event():
             import subprocess
             seed_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seed_demo_data.py")
             result = subprocess.run(
-                ["python", seed_script],
+                [sys.executable, seed_script],
                 capture_output=True, text=True, timeout=120
             )
             if result.returncode == 0:
