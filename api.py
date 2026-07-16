@@ -322,15 +322,13 @@ def get_opportunities_financial():
 
         # ── Load historical closure rates ──────────────────────────────
         hist_rows = conn.execute("""
-            SELECT d.measure_key,
+            SELECT g.measure_key,
                    COUNT(*) AS total_outreached,
                    SUM(CASE WHEN LOWER(g.gap_status) = 'closed' THEN 1 ELSE 0 END) AS closed_count
             FROM fact_nba_outreach_plan o
-            JOIN fact_nba_claude_decision d
-                ON d.member_gap_key = o.member_gap_key AND d.nba_run_id = o.nba_run_id
             JOIN fact_member_gap g ON g.member_gap_key = o.member_gap_key
             WHERE o.status IN ('COMPLETED','SENT','SCHEDULED')
-            GROUP BY d.measure_key
+            GROUP BY g.measure_key
         """).fetchall()
         hist_by_mk = {r["measure_key"]: dict(r) for r in hist_rows}
 
