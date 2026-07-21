@@ -1037,7 +1037,7 @@ async function handleDatasourceFiles(fileList){
           html+=`<div style="font-size:.78rem;font-weight:600;color:#a5b4fc;margin-bottom:.4rem">AI Top Opportunities from your data:</div>`;
           tops.forEach((o,i)=>{
             html+=`<div style="background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:7px;padding:.55rem .9rem;margin-bottom:.35rem">
-              <div style="font-weight:600;font-size:.82rem">#${i+1} ${o.measure_key} × ${o.plan_key} — Every $1 generates ~$${Math.round(o.roi_ratio||0).toLocaleString()} in CMS bonus | CMS Bonus $${((o.cms_bonus_impact||0)/1000).toFixed(0)}K</div>
+              <div style="font-weight:600;font-size:.82rem">#${i+1} ${o.measure_key} × ${o.plan_key}${o.ai_analysis?` — Every $1 returns $${Math.round((o.net_return||0)/Math.max(o.total_outreach_cost||1,1)).toLocaleString()} net`:' — AI analysis pending'} | CMS Bonus ${_fmtN(o.cms_bonus||o.cms_bonus_expected||0)}</div>
               <div style="font-size:.75rem;color:var(--g300);margin-top:.2rem">${(o.claude_reasoning||'').substring(0,120)}</div>
             </div>`;
           });
@@ -1065,7 +1065,26 @@ async function handleDatasourceFiles(fileList){
   },3000);
 }
 
-async function runAiAnalysis(){
+async function runAiAnalysis(measureKey, planKey){
+  if(measureKey&&planKey){
+    // Per-card analysis trigger
+    const btn=event&&event.target;
+    if(btn){btn.disabled=true;btn.textContent='Analyzing…';}
+    try{
+      await fetch(`${API}/financial/analyze/${measureKey}/${planKey}`,{method:'POST'});
+      const fin=await apiGet('/opportunities/financial');
+      S.financialData=fin;
+      render();
+    }catch(e){
+      if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
+      alert('Analysis failed — check server logs.');
+    }
+    return;
+  }
+  // Full portfolio analysis (legacy flow)
+  return runAiAnalysisAll();
+}
+async function runAiAnalysisAll(){
   const btn=document.getElementById('ai-analyze-btn');
   const results=document.getElementById('ai-analysis-results');
   const empty=document.getElementById('ai-analysis-empty');
@@ -1104,7 +1123,7 @@ async function runAiAnalysis(){
             </div>
             <!-- summary metrics row -->
             <div style="display:flex;gap:1.25rem;margin-top:.6rem;flex-wrap:wrap">
-              <div><span style="font-size:.7rem;color:var(--g500)">Est. Return </span><strong style="font-size:.88rem;color:var(--g200)">$${Math.round(o.roi_ratio||0).toLocaleString()} per $1</strong></div>
+              <div><span style="font-size:.7rem;color:var(--g200)">${o.ai_analysis?'Net Return':'AI Pending'}</span><br><strong style="font-size:.88rem;color:var(--g200)">${o.ai_analysis?'$'+Math.round((o.net_return||0)/Math.max(o.total_outreach_cost||1,1)).toLocaleString()+' per $1':'—'}</strong></div>
               <div><span style="font-size:.7rem;color:var(--g500)">CMS Bonus (this measure × plan) </span><strong style="font-size:.88rem;color:#34d399">$${((o.cms_bonus_impact||0)/1000).toFixed(0)}K</strong></div>
               <div><span style="font-size:.7rem;color:var(--g500)">Expected Closures </span><strong style="font-size:.88rem;color:var(--g200)">${Math.round(o.expected_closures||0)} members</strong></div>
               <div><span style="font-size:.7rem;color:var(--g500)">Priority Score </span><strong style="font-size:.88rem;color:#a5b4fc">${(o.priority_score||0).toFixed(1)}</strong></div>
@@ -2452,16 +2471,16 @@ function renderOpp(){
               <div><span style="color:var(--g500)">CMS bonus gained</span><br><strong style="color:#16a34a">${_fmtN(t12bonus)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this plan, this measure, projected)</span></div>
               <div><span style="color:var(--g500)">Net return</span><br><strong style="color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12net)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this measure only)</span></div>
             </div>
-            ${t12cost>0?`
+            ${o.ai_analysis?`
 <div style="background:#fff;border:1px solid #A7D9C8;border-radius:6px;padding:.65rem .8rem;margin-top:.3rem">
   <div style="font-size:.8rem;font-weight:700;color:#15803D;margin-bottom:.5rem">
-    💰 Every $1 invested could generate $${(o.roi_ratio>10?Math.round(o.roi_ratio):o.roi_ratio.toFixed(1)).toLocaleString()} in CMS bonus value
+    💰 Every $1 invested returns $${t12cost>0?Math.round(t12net/Math.max(t12cost,1)).toLocaleString():'—'} in net CMS value
   </div>
   <div style="font-size:.74rem;color:var(--g600);line-height:1.7">
     <div>📋 <strong>Campaign Cost:</strong> $${t12cost.toLocaleString()} <span style="color:var(--g400)">(contacting ${t12m} highest-priority members)</span></div>
-    <div>⭐ <strong>Expected Stars Impact:</strong> +${t12stars.toFixed(3)}★ <span style="color:var(--g400)">(across ${(o.eligible_members||o.denominator||0).toLocaleString()} total eligible members)</span></div>
+    <div>⭐ <strong>Expected Stars Impact:</strong> +${t12stars.toFixed(4)}★ <span style="color:var(--g400)">(across ${(o.eligible_pool||o.eligible_members||0).toLocaleString()} estimated eligible members)</span></div>
     <div>🏛 <strong>CMS Bonus Value:</strong> ${_fmtN(t12bonus)} <span style="color:var(--g400)">(if Stars improvement sustained through measurement year)</span></div>
-    <div>📈 <strong>Net Campaign Return:</strong> <strong style="color:${t12net>=0?'#15803D':'var(--red)'}">${_fmtN(t12net)}</strong> estimated</div>
+    <div>📈 <strong>Net Campaign Return:</strong> <strong style="color:${t12net>=0?'#15803D':'var(--red)'}">${_fmtN(t12net)}</strong></div>
   </div>
   <div style="margin-top:.6rem">
     <div style="font-size:.67rem;color:var(--g400);margin-bottom:.25rem">Cost vs Bonus (to scale)</div>
@@ -2469,14 +2488,14 @@ function renderOpp(){
       <div style="display:flex;align-items:center;gap:.4rem">
         <div style="width:60px;font-size:.67rem;color:var(--g500);text-align:right">Cost</div>
         <div style="flex:1;height:10px;background:var(--g100);border-radius:3px;position:relative">
-          <div style="height:100%;width:${Math.max(2,Math.min(100,t12cost/(Math.max(t12bonus,t12cost))*100))}%;background:var(--amber);border-radius:3px"></div>
+          <div style="height:100%;width:${Math.max(2,Math.min(100,t12cost/Math.max(t12bonus,t12cost)*100))}%;background:var(--amber);border-radius:3px"></div>
         </div>
         <div style="font-size:.67rem;color:var(--amber);width:55px">$${t12cost.toLocaleString()}</div>
       </div>
       <div style="display:flex;align-items:center;gap:.4rem">
         <div style="width:60px;font-size:.67rem;color:var(--g500);text-align:right">Bonus</div>
         <div style="flex:1;height:10px;background:var(--g100);border-radius:3px;position:relative">
-          <div style="height:100%;width:${Math.max(2,Math.min(100,t12bonus/(Math.max(t12bonus,t12cost))*100))}%;background:#15803D;border-radius:3px"></div>
+          <div style="height:100%;width:${Math.max(2,Math.min(100,t12bonus/Math.max(t12bonus,t12cost)*100))}%;background:#15803D;border-radius:3px"></div>
         </div>
         <div style="font-size:.67rem;color:#15803D;width:55px">${_fmtN(t12bonus)}</div>
       </div>
@@ -2484,8 +2503,13 @@ function renderOpp(){
   </div>
 </div>
 <div style="font-size:.67rem;color:var(--g400);line-height:1.45;margin-top:.4rem;padding:.4rem .5rem;background:var(--g50);border-radius:4px">
-  CMS bonus calculations assume Stars improvement is maintained through measurement year end. Actual bonus depends on performance across all measures. Projections based on estimated plan population — connect your data source for plan-specific figures.
-</div>`:''}
+  AI analysis based on actual member population data. CMS bonus assumes Stars improvement sustained through measurement year end.
+</div>`:`
+<div style="border:1px dashed var(--g200);border-radius:6px;padding:.9rem 1rem;margin-top:.5rem;text-align:center;background:var(--g50)">
+  <div style="font-size:.8rem;color:var(--g500);margin-bottom:.6rem">Financial projections require AI analysis</div>
+  <div style="font-size:.72rem;color:var(--g400);margin-bottom:.75rem">Run the AI analysis to get Claude-generated closure rates, outreach costs, and ROI based on your actual member population data.</div>
+  <button onclick="runAiAnalysis('${mk}','${pk}')" style="background:var(--teal);color:#fff;border:none;padding:.45rem 1.1rem;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer">🤖 Run AI Analysis</button>
+</div>`}
           </div>
         </div>
         <div class="opp-top-col" style="display:flex;flex-direction:column;gap:.75rem">
