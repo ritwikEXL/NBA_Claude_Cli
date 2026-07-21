@@ -464,13 +464,41 @@ def get_opportunities_financial():
         plan_pmpm    = float(d.get("plan_pmpm_monthly") or 1100)
         annual_pmpm  = plan_pmpm * 12
 
-        # ── Tier counts from DB (propensity-based) ─────────────────────
-        open_gaps_db = int(d.get("open_gaps", 0) or 0)
-        t1_db = int(d.get("tier1_count", 0) or 0)
-        t2_db = int(d.get("tier2_count", 0) or 0)
-        t3_db = int(d.get("tier3_count", 0) or 0)
+        # ── Eligibility rates by measure code ─────────────────────────
+        ELIG_RATES = {
+            "BCS": 0.28, "COL": 0.42, "EED": 0.12, "CDC": 0.32,
+            "MAD": 0.12, "AFV": 0.75, "SPC": 0.18,
+        }
+        elig_rate = ELIG_RATES.get(mc, 0.25)
 
-        # ── Closure rates: historical if ≥5 samples, else assumed ──────
+        # STEP 1 — Eligible pool from plan_population × eligibility rate
+        eligible_pool = round(plan_members * elig_rate)
+
+        # STEP 2 — Compliance rate from our DB data
+        total_in_data = int(d.get("eligible_members", 1) or 1)
+        closed_in_data = int(d.get("closed_gaps", 0) or 0)
+        compliance_rate = round(closed_in_data / max(total_in_data, 1), 4)
+
+        # STEP 3 — Apply compliance to eligible pool → realistic open gaps
+        open_gaps_realistic = round(eligible_pool * (1.0 - compliance_rate))
+        open_gaps_db = int(d.get("open_gaps", 0) or 0)
+        open_population = float(open_gaps_realistic)
+
+        # STEP 4 — Tier % distribution from DB propensity data
+        t1_db_raw = int(d.get("tier1_count", 0) or 0)
+        t2_db_raw = int(d.get("tier2_count", 0) or 0)
+        t3_db_raw = int(d.get("tier3_count", 0) or 0)
+        total_open_db = max(t1_db_raw + t2_db_raw + t3_db_raw, 1)
+        t1_pct = t1_db_raw / total_open_db
+        t2_pct = t2_db_raw / total_open_db
+        t3_pct = t3_db_raw / total_open_db
+
+        # Scale to realistic population
+        t1_db = round(open_gaps_realistic * t1_pct)
+        t2_db = round(open_gaps_realistic * t2_pct)
+        t3_db = open_gaps_realistic - t1_db - t2_db  # ensure sum exact
+
+        # STEP 5 — Closure rates
         hist    = hist_by_mk.get(mk, {})
         hist_n  = hist.get("total_outreached", 0) or 0
         if hist_n >= 5:
@@ -490,48 +518,52 @@ def get_opportunities_financial():
         t3_closures = round(t3_db * t3_close, 1)
         total_expected_closures = round(t1_closures + t2_closures + t3_closures, 1)
 
-        # ── Stars formula using plan_population denominator ────────────
-        # stars_improvement = min((expected_closures / eligible_members) * star_weight * 0.5, star_weight * 0.10)
-        stars_improvement  = min(
-            (total_expected_closures / max(denominator, 1)) * sw * 0.5,
+        # STEP 6 — Stars improvement (denominator = eligible_pool)
+        stars_improvement = min(
+            (total_expected_closures / max(eligible_pool, 1)) * sw * 0.5,
             sw * 0.10
         )
         stars_improvement  = round(stars_improvement, 6)
-        stars_all_closed   = round(min(open_population / max(denominator, 1) * sw * 0.5, sw * 0.50), 4)
-        stars_expected     = stars_improvement  # alias for compatibility
-        stars_per_gap      = round((1.0 / max(denominator, 1)) * sw * 0.5, 8)
+        stars_all_closed   = round(min(open_gaps_realistic / max(eligible_pool, 1) * sw * 0.5, sw * 0.50), 4)
+        stars_expected     = stars_improvement
+        stars_per_gap      = round((1.0 / max(eligible_pool, 1)) * sw * 0.5, 8)
 
-        # ── CMS bonus from plan_revenue ────────────────────────────────
+        # STEP 7 — CMS bonus
         cms_bonus = round(stars_improvement * plan_revenue * 0.05)
         cms_bonus_all = round(stars_all_closed * plan_revenue * 0.05)
         cms_bonus_expected = cms_bonus
 
-        # ── Outreach costs ─────────────────────────────────────────────
+        # STEP 8 — Outreach cost using REALISTIC tier counts
         tier1_cost = int(round(t1_db * T1_COST))
         tier2_cost = int(round(t2_db * T2_COST))
         tier3_cost = int(round(t3_db * T3_COST))
         total_outreach_cost = tier1_cost + tier2_cost + tier3_cost
-        total_cost = total_outreach_cost  # alias
+        total_cost = total_outreach_cost
 
+        # STEP 9 — Net return and ROI (capped display at 100x)
         net_return = cms_bonus - total_outreach_cost
         roi_ratio_raw = round(net_return / max(total_outreach_cost, 1), 1)
-        roi_ratio = min(roi_ratio_raw, 999.0)
+        roi_ratio = min(roi_ratio_raw, 100.0)
 
         notes = []
-        if roi_ratio > 100:
+        if roi_ratio_raw > 100:
             notes.append("Verify with full plan data")
 
-        # ── Confidence level ─────────────────────────────────────────────
+        # STEP 10 — Confidence based on eligible_pool
         hist_has_data = hist_n >= 5
-        if d.get("eligible_members", 0) >= 500 and hist_has_data:
+        if eligible_pool >= 5000 and hist_has_data:
             confidence = "HIGH"
-            confidence_description = f"High confidence — {round(denominator):,} eligible members with historical response data"
-        elif d.get("eligible_members", 0) < 50:
+            confidence_description = f"High confidence — estimated {eligible_pool:,} eligible members with historical response data"
+        elif eligible_pool < 1000:
             confidence = "LOW"
-            confidence_description = f"Low confidence — {round(denominator):,} eligible members. Projections may not be statistically reliable."
+            confidence_description = f"Low confidence — estimated {eligible_pool:,} eligible members. Projections may not be statistically reliable."
         else:
             confidence = "MEDIUM"
-            confidence_description = f"Medium confidence — {round(denominator):,} eligible members (industry benchmark rates applied)"
+            confidence_description = f"Medium confidence — estimated {eligible_pool:,} eligible members (industry benchmark rates applied)"
+
+        # denominator kept for backward compat
+        denominator = float(eligible_pool)
+        gap_to_benchmark = round(max(0.0, min(benchmark - compliance_rate, 0.40)), 4)
 
         results.append({
             "measure_key": mk,
@@ -541,9 +573,11 @@ def get_opportunities_financial():
             "region": d["region"], "segment": d["segment"],
             "star_rating_current": d["star_rating_current"],
             "star_rating_target":  d["star_rating_target"],
-            "denominator": round(denominator),
-            "eligible_members": round(denominator),
+            "denominator": eligible_pool,
+            "eligible_members": eligible_pool,
+            "eligible_pool": eligible_pool,
             "open_population": round(open_population),
+            "open_gaps_realistic": round(open_gaps_realistic),
             "total_in_db": d.get("eligible_members") or 0,
             "open_gaps": open_gaps_db,
             "closed_gaps": d["closed_gaps"] or 0,

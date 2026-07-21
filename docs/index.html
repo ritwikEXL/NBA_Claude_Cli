@@ -2343,23 +2343,22 @@ function renderOpp(){
     const t1r=o.tier1_closure_rate||0.60;
     const t2r=o.tier2_closure_rate||0.35;
     const t3r=o.tier3_closure_rate||0.18;
-    const t1m=_tierM(o.tier1_closures,t1r);
-    const t2m=_tierM(o.tier2_closures,t2r);
-    const t3m=_tierM(o.tier3_closures,t3r);
-    const t1cpm=t1m>0?Math.round(o.tier1_cost/t1m):1;
-    const t2cpm=t2m>0?Math.round(o.tier2_cost/t2m):16;
+    const t1m=o.tier1_count||0;
+    const t2m=o.tier2_count||0;
+    const t3m=o.tier3_count||0;
+    const t1cpm=t1m>0?Math.round(o.tier1_cost/t1m):2;
+    const t2cpm=t2m>0?Math.round(o.tier2_cost/t2m):17;
     const t3cpm=t3m>0?Math.round(o.tier3_cost/t3m):45;
-    const t1exp=Math.round(o.tier1_closures);
-    const t2exp=Math.round(o.tier2_closures);
-    const t3exp=Math.round(o.tier3_closures);
+    const t1exp=Math.round(o.tier1_closures||0);
+    const t2exp=Math.round(o.tier2_closures||0);
+    const t3exp=Math.round(o.tier3_closures||0);
     const t12m=t1m+t2m;
     const t12exp=t1exp+t2exp;
-    const t12cost=o.tier1_cost+o.tier2_cost;
-    const t12stars=_capS(Math.min((o.tier1_closures+o.tier2_closures)*o.stars_per_gap,o.star_weight*0.15));
-    // FIX 6: apply stars_upside_factor — lower-star plans have more bonus growth potential
-    const t12bonusRaw=t12stars*sel.members*sel.annual_pmpm*0.05*upside;
-    const t12bonus=Math.round(_capB(t12bonusRaw,planRev));
-    const t12net=t12bonus-t12cost;
+    const t12cost=o.total_outreach_cost||0;
+    const t12stars=o.stars_improvement||0;
+    // Use server-computed CMS bonus directly (based on realistic eligible_pool)
+    const t12bonus=o.cms_bonus||0;
+    const t12net=o.net_return||0;
     const t12roi=t12cost>0?Math.round(t12net/Math.max(t12cost,1)):0;
     // Max CMS bonus if ALL gaps on this measure closed (capped at 2% plan revenue, adjusted for upside)
     const maxCmsBonus=Math.round(_capB(o.cms_bonus_all*upside,planRev));
@@ -2435,6 +2434,9 @@ function renderOpp(){
               <span>Expected: <strong style="color:#7C3AED">~${t3exp} completions</strong> at ${Math.round(t3r*100)}%</span>
             </div>
           </div>`:`<div class="tier-block tier-hightouch" style="opacity:.4;margin-bottom:.75rem;font-size:.75rem">Need High Touch — no eligible members</div>`}
+          <div style="font-size:.67rem;color:var(--g400);line-height:1.4;padding:.3rem .1rem;margin-bottom:.4rem">
+            Projected member counts based on estimated eligible population of ${(o.eligible_pool||o.eligible_members||0).toLocaleString()} members. Connect your data source for plan-specific figures.
+          </div>
           <div style="background:linear-gradient(135deg,#EAF6F2,#F5FBF9);border:1.5px solid #A7D9C8;border-radius:8px;padding:.75rem .9rem">
             <div style="font-size:.74rem;font-weight:700;color:var(--teal);margin-bottom:.5rem">If you target Tier 1 + Tier 2 only <span style="font-size:.67rem;font-weight:400;color:var(--g500)">— all figures estimated</span></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem .75rem;font-size:.75rem;margin-bottom:.5rem">
