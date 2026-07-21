@@ -2653,13 +2653,18 @@ function renderOpp(){
             const lbl=o.funding==='unfunded'?'Skip':'Full ✓';
             const lblColor=o.funding==='unfunded'?'var(--g400)':o.funding==='full'?'var(--teal)':'var(--amber)';
             const bonusCapped=_capB(o.funded_bonus||0,planRev);
+            const hasReturn=bonusCapped>0;
+            const returnLabel=o.funding!=='unfunded'
+              ?(hasReturn?`<span style="font-size:.72rem;color:#16a34a">${_fmtN(bonusCapped)} return</span>`
+                :`<span style="font-size:.72rem;color:var(--amber)" title="Run AI Analysis on this card to get ROI estimates">⚠ run AI first</span>`)
+              :`<span style="font-size:.72rem;color:var(--g400)">need $${o.total_cost.toLocaleString()}</span>`;
             return`<div class="alloc-row ${cls}">
               <span style="color:${iconColor};font-size:.85rem;flex-shrink:0">${icon}</span>
               <span style="min-width:1.5ch;color:var(--g500);font-size:.72rem">${i+1}.</span>
               <span style="flex:1;color:var(--g700);font-size:.79rem">${o.measure_code} × ${o.plan_name.replace('Aurora ','')}</span>
               ${o.funding!=='unfunded'
-                ?`<span style="font-size:.72rem;color:var(--g500)">$${(o.funded_cost||0).toLocaleString()}</span><span style="font-size:.72rem;color:#16a34a">${_fmtN(bonusCapped)} return</span>`
-                :`<span style="font-size:.72rem;color:var(--g400)">need $${o.total_cost.toLocaleString()}</span>`}
+                ?`<span style="font-size:.72rem;color:var(--g500)">$${(o.funded_cost||0).toLocaleString()}</span>${returnLabel}`
+                :returnLabel}
               <span style="font-size:.72rem;font-weight:600;color:${lblColor};min-width:60px;text-align:right">${lbl}</span>
             </div>`;
           }).join('')}

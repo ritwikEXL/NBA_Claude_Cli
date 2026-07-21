@@ -1129,7 +1129,7 @@ async function handleDatasourceFiles(fileList){
   },3000);
 }
 
-async function runAiAnalysis(){
+async function runAiAnalysisAll(){
   const btn=document.getElementById('ai-analyze-btn');
   const results=document.getElementById('ai-analysis-results');
   const empty=document.getElementById('ai-analysis-empty');
@@ -2672,13 +2672,18 @@ function renderOpp(){
             const lbl=o.funding==='unfunded'?'Skip':'Full ✓';
             const lblColor=o.funding==='unfunded'?'var(--g400)':o.funding==='full'?'var(--teal)':'var(--amber)';
             const bonusCapped=_capB(o.funded_bonus||0,planRev);
+            const hasReturn=bonusCapped>0;
+            const returnLabel=o.funding!=='unfunded'
+              ?(hasReturn?`<span style="font-size:.72rem;color:#16a34a">${_fmtN(bonusCapped)} return</span>`
+                :`<span style="font-size:.72rem;color:var(--amber)" title="Run AI Analysis on this card to get ROI estimates">⚠ run AI first</span>`)
+              :`<span style="font-size:.72rem;color:var(--g400)">need $${o.total_cost.toLocaleString()}</span>`;
             return`<div class="alloc-row ${cls}">
               <span style="color:${iconColor};font-size:.85rem;flex-shrink:0">${icon}</span>
               <span style="min-width:1.5ch;color:var(--g500);font-size:.72rem">${i+1}.</span>
               <span style="flex:1;color:var(--g700);font-size:.79rem">${o.measure_code} × ${o.plan_name.replace('Aurora ','')}</span>
               ${o.funding!=='unfunded'
-                ?`<span style="font-size:.72rem;color:var(--g500)">$${(o.funded_cost||0).toLocaleString()}</span><span style="font-size:.72rem;color:#16a34a">${_fmtN(bonusCapped)} return</span>`
-                :`<span style="font-size:.72rem;color:var(--g400)">need $${o.total_cost.toLocaleString()}</span>`}
+                ?`<span style="font-size:.72rem;color:var(--g500)">$${(o.funded_cost||0).toLocaleString()}</span>${returnLabel}`
+                :returnLabel}
               <span style="font-size:.72rem;font-weight:600;color:${lblColor};min-width:60px;text-align:right">${lbl}</span>
             </div>`;
           }).join('')}
@@ -2717,7 +2722,7 @@ function renderOpp(){
     <div style="padding:0 1.5rem 1.5rem">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;flex-wrap:wrap;gap:.5rem">
         <div style="font-size:.78rem;color:var(--g400)">Click Run to analyze all opportunities with Claude AI. This may take 30–60 seconds.</div>
-        <button id="ai-analyze-btn" onclick="runAiAnalysis()" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);color:#6366f1;border-radius:7px;padding:.4rem 1.1rem;font-size:.82rem;cursor:pointer;font-weight:600">Run AI Analysis</button>
+        <button id="ai-analyze-btn" onclick="runAiAnalysisAll()" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);color:#6366f1;border-radius:7px;padding:.4rem 1.1rem;font-size:.82rem;cursor:pointer;font-weight:600">Run AI Analysis</button>
       </div>
       <div id="ai-analysis-results"></div>
       <div id="ai-analysis-empty" style="text-align:center;padding:1.5rem;color:var(--g400);font-size:.82rem">
