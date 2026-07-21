@@ -408,6 +408,88 @@ tr:hover td{background:var(--g50)}
 .alloc-row.partial{background:rgba(217,119,6,.05)}
 .alloc-row.unfunded{opacity:.45}
 .proj-label{font-size:.67rem;color:var(--g500);font-weight:400;margin-left:.2rem}
+/* ── Data Sources Tab ──────────────────────────────────────────────── */
+.ds-section{margin-bottom:1.5rem}
+.ds-section-title{font-size:.88rem;font-weight:700;color:var(--g900);margin-bottom:.6rem}
+.ds-section-sub{font-size:.78rem;color:var(--g600);margin-bottom:.9rem}
+.ds-status-table{background:var(--white);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden;margin-bottom:.75rem}
+.ds-banner{
+  background:var(--amber-l);border:1px solid #F59E0B;border-radius:var(--r);
+  padding:.65rem 1rem;font-size:.8rem;color:#92400E;display:flex;align-items:center;gap:.6rem;
+  margin-bottom:.75rem;
+}
+.ds-banner-icon{font-size:1rem;flex-shrink:0}
+.ds-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.2rem}
+@media(max-width:900px){.ds-cards{grid-template-columns:repeat(2,1fr)}}
+.ds-card{
+  background:var(--white);border-radius:var(--r-lg);box-shadow:var(--shadow);
+  padding:1.1rem 1.1rem .9rem;border-top:3px solid var(--g200);
+  display:flex;flex-direction:column;gap:.5rem;
+}
+.ds-card.active-card{border-top-color:var(--teal)}
+.ds-card-icon{font-size:1.4rem}
+.ds-card-name{font-size:.85rem;font-weight:700;color:var(--g900)}
+.ds-card-desc{font-size:.76rem;color:var(--g600);flex:1}
+.ds-card-actions{display:flex;align-items:center;gap:.5rem;margin-top:.3rem}
+.ds-coming-soon{
+  display:inline-block;font-size:.67rem;font-weight:700;
+  background:var(--g100);color:var(--g600);
+  padding:.15rem .5rem;border-radius:10px;letter-spacing:.04em;
+}
+.ds-btn{
+  padding:.32rem .85rem;border-radius:6px;font-size:.78rem;font-weight:600;
+  background:var(--teal);color:var(--white);border:none;cursor:pointer;
+  transition:background .15s;
+}
+.ds-btn:hover{background:var(--teal-m)}
+.ds-btn-outline{
+  padding:.32rem .85rem;border-radius:6px;font-size:.78rem;font-weight:600;
+  background:transparent;color:var(--g600);border:1.5px solid var(--g200);cursor:pointer;
+  transition:all .15s;
+}
+.ds-btn-outline:hover{border-color:var(--teal);color:var(--teal)}
+.ds-btn-danger{
+  padding:.32rem .85rem;border-radius:6px;font-size:.78rem;font-weight:600;
+  background:var(--g100);color:var(--g600);border:1.5px solid var(--g200);cursor:pointer;
+  transition:all .15s;
+}
+.ds-btn-danger:hover{background:var(--red-l);color:var(--red);border-color:var(--red)}
+.ds-tpl-row{display:flex;gap:.75rem;flex-wrap:wrap}
+/* ── Upload Modal ──────────────────────────────────────────────────── */
+.ds-modal-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;
+  align-items:center;justify-content:center;
+}
+.ds-modal-backdrop.open{display:flex}
+.ds-modal{
+  background:var(--white);border-radius:var(--r-lg);box-shadow:0 8px 32px rgba(0,0,0,.18);
+  width:min(660px,94vw);max-height:90vh;overflow-y:auto;
+  padding:1.5rem;
+}
+.ds-modal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem}
+.ds-modal-title{font-size:.95rem;font-weight:700;color:var(--g900)}
+.ds-modal-close{background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--g600);padding:.2rem}
+.ds-modal-close:hover{color:var(--g900)}
+.ds-step-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--g400);margin-bottom:.35rem}
+.ds-step-body{margin-bottom:1rem}
+.ds-radio-group{display:flex;flex-direction:column;gap:.4rem}
+.ds-radio-opt{display:flex;align-items:center;gap:.5rem;font-size:.83rem;cursor:pointer}
+.ds-radio-opt input{width:15px;height:15px;accent-color:var(--teal);cursor:pointer}
+.ds-drop-zone{
+  border:2px dashed var(--g200);border-radius:var(--r-lg);
+  padding:1.8rem 1rem;text-align:center;cursor:pointer;
+  transition:border-color .15s,background .15s;background:var(--g50);
+}
+.ds-drop-zone.dragover{border-color:var(--teal);background:var(--teal-lll)}
+.ds-drop-icon{font-size:1.8rem;margin-bottom:.4rem}
+.ds-drop-hint{font-size:.8rem;color:var(--g600)}
+.ds-drop-hint strong{color:var(--teal)}
+.ds-file-chosen{margin-top:.5rem;font-size:.77rem;color:var(--g700);font-weight:600}
+.ds-preview-wrap{overflow-x:auto;max-height:200px;overflow-y:auto;border:1px solid var(--g200);border-radius:var(--r);font-size:.73rem}
+.ds-error-list{background:var(--red-l);border:1px solid var(--red);border-radius:var(--r);padding:.6rem .85rem;font-size:.78rem;color:var(--red);margin-top:.5rem}
+.ds-success-banner{background:var(--green-l);border:1px solid var(--green);border-radius:var(--r);padding:.6rem .85rem;font-size:.8rem;color:var(--green);margin-top:.5rem}
+.ds-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:var(--white);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:.35rem}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -426,6 +508,7 @@ tr:hover td{background:var(--g50)}
     <button class="nav-tab active" data-action="switch-tab" data-val="opp">Opportunities</button>
     <button class="nav-tab" data-action="switch-tab" data-val="eval">Evaluation</button>
     <button class="nav-tab" data-action="switch-tab" data-val="run">Run Session</button>
+    <button class="nav-tab" data-action="switch-tab" data-val="data">Data Sources</button>
   </div>
   <div class="nav-right">
     <div class="history-wrap" id="history-wrap">
@@ -453,6 +536,7 @@ tr:hover td{background:var(--g50)}
       <div class="run-right" id="run-right"></div>
     </div>
   </div>
+  <div id="view-data" class="view"></div>
 </div>
 
 <script>
@@ -1311,7 +1395,9 @@ function renderNav(){
   document.getElementById('view-opp').classList.toggle('active',S.tab==='opp');
   document.getElementById('view-eval').classList.toggle('active',S.tab==='eval');
   document.getElementById('view-run').classList.toggle('active',S.tab==='run');
+  document.getElementById('view-data').classList.toggle('active',S.tab==='data');
   if(S.tab==='eval') renderEval();
+  if(S.tab==='data') renderDataSources();
   // History dropdown
   const hw=document.getElementById('history-wrap');
   if(hw)hw.innerHTML=`<button class="history-btn" data-action="toggle-history">📋 Sessions ▾</button>${S.historyOpen?renderHistoryDropdown():''}`;
@@ -3092,6 +3178,357 @@ document.addEventListener('click',e=>{
 /* ── Init ──────────────────────────────────────────────────────────── */
 checkApiHealth();
 loadData().then(loadLatestSession);
+
+/* ══════════════════════════════════════════════════════════════════════
+   DATA SOURCES TAB
+   ══════════════════════════════════════════════════════════════════════ */
+
+// State for Data Sources tab
+const DS = {
+  status: null,
+  modalOpen: false,
+  step: 1,        // 1=type, 2=template, 3=file, 4=preview, 5=import
+  dataType: 'members',
+  file: null,
+  parsedRows: [],
+  parsedHeaders: [],
+  importResult: null,
+  importing: false,
+  resetting: false,
+};
+
+const DS_TYPES = {
+  members: { label: 'Member Roster',       endpoint: '/data/upload/members', tpl: '/data/templates/members' },
+  gaps:    { label: 'Care Gap File',        endpoint: '/data/upload/gaps',    tpl: '/data/templates/gaps'    },
+  plans:   { label: 'Plan Configuration',  endpoint: '/data/upload/plans',   tpl: '/data/templates/plans'   },
+};
+
+async function loadDataStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/data/status`);
+    if (res.ok) DS.status = await res.json();
+  } catch(e) { /* ignore */ }
+}
+
+async function renderDataSources() {
+  const el = document.getElementById('view-data');
+  if (!el) return;
+  if (!DS.status) await loadDataStatus();
+  const s = DS.status || {};
+
+  el.innerHTML = `
+  <div style="max-width:1000px">
+    <!-- Section A: Current Data Status -->
+    <div class="ds-section">
+      <div class="section-head"><h2 class="ds-section-title">Current Data Status</h2></div>
+      <div class="ds-status-table">
+        <table>
+          <thead><tr><th>Data Source</th><th>Records</th><th>Status</th><th>Last Updated</th></tr></thead>
+          <tbody>
+            <tr><td>Member Roster</td><td>${(s.members?.count||0).toLocaleString()}</td><td><span class="badge badge-green">Active</span></td><td>${s.members?.updated||'—'}</td></tr>
+            <tr><td>Care Gaps</td><td>${(s.gaps?.count||0).toLocaleString()}</td><td><span class="badge badge-green">Active</span></td><td>${s.gaps?.updated||'—'}</td></tr>
+            <tr><td>Plan Contracts</td><td>${(s.plans?.count||0).toLocaleString()}</td><td><span class="badge badge-green">Active</span></td><td>${s.plans?.updated||'—'}</td></tr>
+            <tr><td>NBA Sessions</td><td>${(s.runs?.count||0).toLocaleString()}</td><td><span class="badge badge-blue">Runs</span></td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ds-banner">
+        <span class="ds-banner-icon">⚠</span>
+        <span>Using synthetic demo data — connect your real data source for accurate opportunity projections</span>
+      </div>
+      <button class="ds-btn-danger" onclick="dsResetData()" id="ds-reset-btn">
+        ${DS.resetting ? '<span class="ds-spinner"></span>Restoring…' : '↺ Reset to Demo Data'}
+      </button>
+    </div>
+
+    <!-- Section B: Connect Your Data -->
+    <div class="ds-section">
+      <div class="ds-section-title">Connect Your Data</div>
+      <div class="ds-section-sub">Upload your own member, gap, or plan data to run accurate NBA opportunity analysis.</div>
+      <div class="ds-cards">
+        <div class="ds-card active-card">
+          <div class="ds-card-icon">📂</div>
+          <div class="ds-card-name">CSV Upload</div>
+          <div class="ds-card-desc">Upload CSV files for member roster, care gaps, or plan configuration. Templates provided.</div>
+          <div class="ds-card-actions">
+            <button class="ds-btn" onclick="dsOpenModal()">Upload Files</button>
+          </div>
+        </div>
+        <div class="ds-card">
+          <div class="ds-card-icon">❄️</div>
+          <div class="ds-card-name">Snowflake</div>
+          <div class="ds-card-desc">Connect directly to your Snowflake data warehouse for live member and gap data.</div>
+          <div class="ds-card-actions"><span class="ds-coming-soon">Coming Soon</span></div>
+        </div>
+        <div class="ds-card">
+          <div class="ds-card-icon">⚡</div>
+          <div class="ds-card-name">Databricks</div>
+          <div class="ds-card-desc">Pull from Databricks Unity Catalog for large-scale HEDIS gap analytics.</div>
+          <div class="ds-card-actions"><span class="ds-coming-soon">Coming Soon</span></div>
+        </div>
+        <div class="ds-card">
+          <div class="ds-card-icon">🗄️</div>
+          <div class="ds-card-name">SQL Server</div>
+          <div class="ds-card-desc">Connect to on-premise or Azure SQL Server member management databases.</div>
+          <div class="ds-card-actions"><span class="ds-coming-soon">Coming Soon</span></div>
+        </div>
+        <div class="ds-card">
+          <div class="ds-card-icon">☁️</div>
+          <div class="ds-card-name">BigQuery</div>
+          <div class="ds-card-desc">Integrate with Google BigQuery for cloud-based Medicare claims and clinical data.</div>
+          <div class="ds-card-actions"><span class="ds-coming-soon">Coming Soon</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section D: Template Downloads -->
+    <div class="ds-section">
+      <div class="ds-section-title">Download Data Templates</div>
+      <div class="ds-section-sub">Download the correct column format before uploading your data.</div>
+      <div class="ds-tpl-row">
+        <a href="${API_BASE}/data/templates/members" download="member_template.csv"><button class="ds-btn-outline">⬇ Member Roster Template</button></a>
+        <a href="${API_BASE}/data/templates/gaps" download="gaps_template.csv"><button class="ds-btn-outline">⬇ Care Gap File Template</button></a>
+        <a href="${API_BASE}/data/templates/plans" download="plans_template.csv"><button class="ds-btn-outline">⬇ Plan Configuration Template</button></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Modal -->
+  <div class="ds-modal-backdrop ${DS.modalOpen ? 'open' : ''}" id="ds-modal-backdrop" onclick="dsBackdropClick(event)">
+    <div class="ds-modal" id="ds-modal">
+      <div class="ds-modal-hdr">
+        <span class="ds-modal-title">Upload Data File</span>
+        <button class="ds-modal-close" onclick="dsCloseModal()">✕</button>
+      </div>
+      ${dsRenderModalBody()}
+    </div>
+  </div>
+  `;
+}
+
+function dsRenderModalBody() {
+  const step = DS.step;
+  const stepLabels = ['Select Type','Download Template','Upload File','Preview','Import'];
+
+  const progressHtml = `<div style="display:flex;gap:.3rem;margin-bottom:1.2rem">${stepLabels.map((l,i)=>`
+    <div style="flex:1;text-align:center">
+      <div style="width:24px;height:24px;border-radius:50%;margin:0 auto .2rem;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center;
+        background:${i+1<step?'var(--green)':i+1===step?'var(--teal)':'var(--g200)'};
+        color:${i+1<=step?'var(--white)':'var(--g600)'};">${i+1<step?'✓':i+1}</div>
+      <div style="font-size:.65rem;color:${i+1===step?'var(--teal)':'var(--g400)'};font-weight:${i+1===step?700:400}">${l}</div>
+    </div>`).join('<div style="flex:0;padding-top:.7rem;color:var(--g300)">›</div>')}</div>`;
+
+  let body = '';
+
+  if (step === 1) {
+    body = `<div class="ds-step-label">Step 1 — What type of data are you uploading?</div>
+    <div class="ds-step-body ds-radio-group">
+      ${Object.entries(DS_TYPES).map(([k,v])=>`
+      <label class="ds-radio-opt">
+        <input type="radio" name="ds-type" value="${k}" ${DS.dataType===k?'checked':''} onchange="DS.dataType=this.value;dsRenderModal()">
+        <span>${v.label}</span>
+      </label>`).join('')}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem">
+      <button class="ds-btn" onclick="DS.step=2;dsRenderModal()">Next →</button>
+    </div>`;
+  } else if (step === 2) {
+    const tpl = DS_TYPES[DS.dataType];
+    body = `<div class="ds-step-label">Step 2 — Download the template for your data type</div>
+    <div class="ds-step-body">
+      <p style="font-size:.82rem;color:var(--g600);margin-bottom:.75rem">Download the template, fill it in with your data, then come back to upload it.</p>
+      <a href="${API_BASE}${tpl.tpl}" download><button class="ds-btn">⬇ Download ${DS_TYPES[DS.dataType].label} Template</button></a>
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:.5rem">
+      <button class="ds-btn-outline" onclick="DS.step=1;dsRenderModal()">← Back</button>
+      <button class="ds-btn" onclick="DS.step=3;dsRenderModal()">Next →</button>
+    </div>`;
+  } else if (step === 3) {
+    body = `<div class="ds-step-label">Step 3 — Select your CSV file</div>
+    <div class="ds-step-body">
+      <div class="ds-drop-zone" id="ds-drop-zone"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="dsHandleDrop(event)">
+        <div class="ds-drop-icon">📁</div>
+        <div class="ds-drop-hint">Drag & drop your CSV here or <strong>click to browse</strong></div>
+        <input type="file" accept=".csv" style="display:none" id="ds-file-input" onchange="dsHandleFile(this.files[0])">
+      </div>
+      ${DS.file ? `<div class="ds-file-chosen">✔ ${DS.file.name} (${(DS.file.size/1024).toFixed(1)} KB)</div>` : ''}
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:.5rem">
+      <button class="ds-btn-outline" onclick="DS.step=2;dsRenderModal()">← Back</button>
+      <button class="ds-btn" ${!DS.file?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="DS.step=4;dsParseAndPreview()">Preview →</button>
+    </div>`;
+  } else if (step === 4) {
+    const missingCols = dsMissingCols();
+    body = `<div class="ds-step-label">Step 4 — Preview (first 5 rows)</div>
+    <div class="ds-step-body">
+      ${DS.parsedHeaders.length ? `
+        <div style="font-size:.78rem;color:var(--g600);margin-bottom:.4rem">${DS.parsedRows.length.toLocaleString()} rows detected · ${DS.parsedHeaders.length} columns</div>
+        ${missingCols.length ? `<div class="ds-error-list">⚠ Missing required columns: <strong>${missingCols.join(', ')}</strong></div>` : ''}
+        <div class="ds-preview-wrap">
+          <table>
+            <thead><tr>${DS.parsedHeaders.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+            <tbody>${DS.parsedRows.slice(0,5).map(row=>`<tr>${DS.parsedHeaders.map(h=>`<td>${row[h]||''}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>
+        </div>` : '<div class="ds-error-list">Could not parse file. Ensure it is a valid CSV.</div>'}
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:.5rem">
+      <button class="ds-btn-outline" onclick="DS.step=3;dsRenderModal()">← Back</button>
+      <button class="ds-btn" ${missingCols.length||!DS.parsedRows.length?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="dsImport()">
+        Import ${DS.parsedRows.length.toLocaleString()} Rows →
+      </button>
+    </div>`;
+  } else if (step === 5) {
+    const r = DS.importResult || {};
+    body = `<div class="ds-step-label">Step 5 — Import Result</div>
+    <div class="ds-step-body">
+      ${DS.importing ? `<div style="text-align:center;padding:1.5rem"><span class="ds-spinner" style="border-color:rgba(241,90,34,.3);border-top-color:var(--teal);width:24px;height:24px;border-width:3px"></span><p style="margin-top:.5rem;color:var(--g600)">Importing…</p></div>` :
+        r.error ? `<div class="ds-error-list">${r.error}</div>` :
+        `<div class="ds-success-banner">
+          ✔ Import complete — <strong>${r.imported||0} rows imported</strong>${r.skipped ? `, ${r.skipped} skipped` : ''}
+          ${r.errors?.length ? `<br>⚠ ${r.errors.length} row errors` : ''}
+        </div>`
+      }
+    </div>
+    ${!DS.importing ? `<div style="display:flex;justify-content:space-between;gap:.5rem">
+      <button class="ds-btn-outline" onclick="dsCloseModal();loadDataStatus().then(()=>renderDataSources())">Close</button>
+      ${!r.error ? `<button class="ds-btn" onclick="dsCloseModal();S.tab='opp';render()">View Opportunities →</button>` : ''}
+    </div>` : ''}`;
+  }
+
+  return progressHtml + body;
+}
+
+function dsRenderModal() {
+  const modal = document.getElementById('ds-modal');
+  if (modal) modal.innerHTML = `
+    <div class="ds-modal-hdr">
+      <span class="ds-modal-title">Upload Data File</span>
+      <button class="ds-modal-close" onclick="dsCloseModal()">✕</button>
+    </div>
+    ${dsRenderModalBody()}`;
+  // Bind drop zone click
+  const dz = document.getElementById('ds-drop-zone');
+  if (dz) dz.onclick = () => document.getElementById('ds-file-input')?.click();
+}
+
+function dsOpenModal() {
+  DS.modalOpen = true; DS.step = 1; DS.file = null;
+  DS.parsedRows = []; DS.parsedHeaders = []; DS.importResult = null;
+  renderDataSources();
+  // bind drop zone click after render
+  setTimeout(()=>{
+    const dz=document.getElementById('ds-drop-zone');
+    if(dz) dz.onclick=()=>document.getElementById('ds-file-input')?.click();
+  },0);
+}
+
+function dsCloseModal() {
+  DS.modalOpen = false;
+  renderDataSources();
+}
+
+function dsBackdropClick(e) {
+  if (e.target.id === 'ds-modal-backdrop') dsCloseModal();
+}
+
+function dsHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('ds-drop-zone')?.classList.remove('dragover');
+  const file = e.dataTransfer?.files?.[0];
+  if (file) dsHandleFile(file);
+}
+
+function dsHandleFile(file) {
+  DS.file = file;
+  dsRenderModal();
+  const dz = document.getElementById('ds-drop-zone');
+  if (dz) dz.onclick = () => document.getElementById('ds-file-input')?.click();
+}
+
+function dsParseAndPreview() {
+  if (!DS.file) return;
+  DS.step = 4;
+  if (typeof Papa !== 'undefined') {
+    Papa.parse(DS.file, {
+      header: true,
+      skipEmptyLines: true,
+      complete(results) {
+        DS.parsedHeaders = results.meta.fields || [];
+        DS.parsedRows = results.data || [];
+        dsRenderModal();
+      },
+      error() {
+        DS.parsedHeaders = []; DS.parsedRows = [];
+        dsRenderModal();
+      }
+    });
+  } else {
+    // Fallback: read as text and split manually
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const lines = (ev.target.result || '').split('\n').filter(Boolean);
+      if (!lines.length) { dsRenderModal(); return; }
+      DS.parsedHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+      DS.parsedRows = lines.slice(1).map(line => {
+        const vals = line.split(',');
+        const obj = {};
+        DS.parsedHeaders.forEach((h, i) => obj[h] = (vals[i]||'').trim().replace(/^"|"$/g,''));
+        return obj;
+      });
+      dsRenderModal();
+    };
+    reader.readAsText(DS.file);
+  }
+}
+
+const DS_REQUIRED = {
+  members: ['member_id','date_of_birth','gender','language_preference','digital_literacy_segment','socioeconomic_segment'],
+  gaps:    ['member_id','measure_code','plan_id','measurement_year','gap_status','gap_open_date','clinical_risk_score','days_open'],
+  plans:   ['plan_id','plan_name','region','segment','current_star_rating','target_star_rating'],
+};
+
+function dsMissingCols() {
+  const req = DS_REQUIRED[DS.dataType] || [];
+  return req.filter(c => !DS.parsedHeaders.includes(c));
+}
+
+async function dsImport() {
+  if (!DS.file) return;
+  DS.step = 5; DS.importing = true; DS.importResult = null;
+  dsRenderModal();
+  try {
+    const fd = new FormData();
+    fd.append('file', DS.file);
+    const endpoint = DS_TYPES[DS.dataType]?.endpoint;
+    const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST', body: fd });
+    DS.importResult = await res.json();
+    if (!res.ok) DS.importResult = { error: DS.importResult.error || `HTTP ${res.status}` };
+    // Reload opportunity data after successful import
+    if (res.ok) loadData();
+  } catch(e) {
+    DS.importResult = { error: String(e) };
+  }
+  DS.importing = false;
+  dsRenderModal();
+}
+
+async function dsResetData() {
+  if (!confirm('This will restore all demo data and overwrite any uploaded data. Continue?')) return;
+  DS.resetting = true;
+  renderDataSources();
+  try {
+    const res = await fetch(`${API_BASE}/data/reset`, { method: 'POST' });
+    if (res.ok) {
+      await loadDataStatus();
+      loadData();
+    }
+  } catch(e) { /* ignore */ }
+  DS.resetting = false;
+  renderDataSources();
+}
 </script>
 </body>
 </html>

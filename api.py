@@ -215,6 +215,18 @@ async def startup_event():
                 logging.info("[startup] Database seeded successfully")
             else:
                 logging.error(f"[startup] Seed failed: {result.stderr[-500:]}")
+        # Always run seed_expansion.py to ensure plan_population and realistic gaps exist
+        try:
+            import subprocess as _sp
+            expand_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seed_expansion.py")
+            if os.path.exists(expand_script):
+                _r = _sp.run([sys.executable, expand_script], capture_output=True, text=True, timeout=180)
+                if _r.returncode == 0:
+                    logging.info("[startup] seed_expansion.py completed successfully")
+                else:
+                    logging.error(f"[startup] seed_expansion.py failed: {_r.stderr[-300:]}")
+        except Exception as _e:
+            logging.error(f"[startup] seed_expansion.py error: {_e}")
     except Exception as e:
         logging.error(f"[startup] Seed error: {e}")
 
@@ -354,31 +366,31 @@ def get_opportunities_financial():
         """).fetchall()
         plan_summary = {r["plan_key"]: dict(r) for r in plan_summary_rows}
 
+        # ── plan_population: true member counts and revenue ────────────
+        pop_rows = conn.execute(
+            "SELECT plan_key, total_members, plan_revenue FROM plan_population"
+        ).fetchall()
+        plan_pop = {r["plan_key"]: dict(r) for r in pop_rows}
+
         # ── Main query ─────────────────────────────────────────────────
         rows = conn.execute("""
             SELECT m.measure_key, m.measure_code, m.measure_name, m.star_weight, m.hedis_domain,
                    p.plan_key, p.plan_name, p.region, p.segment,
                    p.plan_annual_revenue, p.total_members, p.plan_pmpm_monthly,
                    p.star_rating_current, p.star_rating_target,
-                   COUNT(*) AS total_in_db,
-                   SUM(CASE WHEN LOWER(g.gap_status) IN ('open','borderline')
+                   COUNT(*) AS eligible_members,
+                   SUM(CASE WHEN LOWER(g.gap_status) IN ('open','borderline','partial')
                              AND LOWER(g.is_suppressed)!='true' THEN 1 ELSE 0 END) AS open_gaps,
                    SUM(CASE WHEN LOWER(g.gap_status)='closed' THEN 1 ELSE 0 END) AS closed_gaps,
                    SUM(CASE WHEN g.nba_propensity_score > 0.70
-                             AND mb.digital_literacy_segment = 'High'
-                             AND LOWER(g.gap_status) IN ('open','borderline') THEN 1 ELSE 0 END) AS tier1_count,
-                   SUM(CASE WHEN NOT (g.nba_propensity_score > 0.70 AND mb.digital_literacy_segment = 'High')
-                             AND (g.nba_propensity_score BETWEEN 0.45 AND 0.70
-                                  OR mb.digital_literacy_segment = 'Medium')
-                             AND LOWER(g.gap_status) IN ('open','borderline') THEN 1 ELSE 0 END) AS tier2_count,
-                   SUM(CASE WHEN NOT (g.nba_propensity_score > 0.70 AND mb.digital_literacy_segment = 'High')
-                             AND NOT (g.nba_propensity_score BETWEEN 0.45 AND 0.70
-                                      OR mb.digital_literacy_segment = 'Medium')
-                             AND LOWER(g.gap_status) IN ('open','borderline') THEN 1 ELSE 0 END) AS tier3_count
+                             AND LOWER(g.gap_status) IN ('open','borderline','partial') THEN 1 ELSE 0 END) AS tier1_count,
+                   SUM(CASE WHEN g.nba_propensity_score BETWEEN 0.45 AND 0.70
+                             AND LOWER(g.gap_status) IN ('open','borderline','partial') THEN 1 ELSE 0 END) AS tier2_count,
+                   SUM(CASE WHEN g.nba_propensity_score < 0.45
+                             AND LOWER(g.gap_status) IN ('open','borderline','partial') THEN 1 ELSE 0 END) AS tier3_count
             FROM fact_member_gap g
             JOIN dim_measure       m  ON m.measure_key = g.measure_key
             JOIN dim_plan_contract p  ON p.plan_key    = g.plan_key
-            JOIN dim_member        mb ON mb.member_key = g.member_key
             GROUP BY m.measure_key, p.plan_key
             HAVING open_gaps > 0
         """).fetchall()
@@ -399,32 +411,24 @@ def get_opportunities_financial():
 
         # ── Eligible / compliant from DB ───────────────────────────────
         elig_data     = elig_by_mk_pk.get((mk, pk), {})
-        denominator   = max(float(elig_data.get("eligible_count", 1)), 1.0)
+        denominator   = max(float(d.get("eligible_members", 1) or 1), 1.0)
         compliant_cnt = float(elig_data.get("compliant_count", 0))
         compliance_rate  = round(compliant_cnt / denominator, 4)
-        open_population  = max(denominator - compliant_cnt, 0.0)
+        open_population  = float(d.get("open_gaps", 0) or 0)
         gap_to_benchmark = round(max(0.0, min(benchmark - compliance_rate, 0.40)), 4)
 
-        # ── Plan economics from DB ─────────────────────────────────────
-        # PMPM-based bonus: stars_improvement × total_members × annual_pmpm × 5%
-        # This reconciles with real MA quality bonus methodology
+        # ── Plan economics from plan_population table ──────────────────
+        pop_data    = plan_pop.get(pk, {})
+        plan_revenue = float(pop_data.get("plan_revenue") or d.get("plan_annual_revenue") or 350_000_000)
+        plan_members = int(pop_data.get("total_members") or d.get("total_members") or 500)
         plan_pmpm    = float(d.get("plan_pmpm_monthly") or 1100)
-        plan_members = int(d.get("total_members") or 500)
-        annual_pmpm  = plan_pmpm * 12          # $/member/year
-        # Keep plan_annual_revenue available for legacy fields only
-        plan_revenue = float(d.get("plan_annual_revenue") or 350_000_000)
+        annual_pmpm  = plan_pmpm * 12
 
-        # ── DB tier counts ─────────────────────────────────────────────
-        open_gaps_db = d["open_gaps"] or 0
-        t1_db = d["tier1_count"] or 0
-        t2_db = d["tier2_count"] or 0
-        t3_db = d["tier3_count"] or 0
-
-        # Scale DB tier ratios to the full open population
-        safe_db_open = max(open_gaps_db, 1)
-        scaled_t1 = open_population * (t1_db / safe_db_open)
-        scaled_t2 = open_population * (t2_db / safe_db_open)
-        scaled_t3 = open_population * (t3_db / safe_db_open)
+        # ── Tier counts from DB (propensity-based) ─────────────────────
+        open_gaps_db = int(d.get("open_gaps", 0) or 0)
+        t1_db = int(d.get("tier1_count", 0) or 0)
+        t2_db = int(d.get("tier2_count", 0) or 0)
+        t3_db = int(d.get("tier3_count", 0) or 0)
 
         # ── Closure rates: historical if ≥5 samples, else assumed ──────
         hist    = hist_by_mk.get(mk, {})
@@ -441,29 +445,41 @@ def get_opportunities_financial():
             t3_close     = closure_assumptions.get((mk, 3), {}).get("expected_rate", 0.18)
             closure_basis = "assumed"
 
-        # ── Costs from DB ──────────────────────────────────────────────
-        tier1_cost = int(round(scaled_t1 * T1_COST))
-        tier2_cost = int(round(scaled_t2 * T2_COST))
-        tier3_cost = int(round(scaled_t3 * T3_COST))
-        total_cost = tier1_cost + tier2_cost + tier3_cost
-
-        t1_closures = round(scaled_t1 * t1_close, 1)
-        t2_closures = round(scaled_t2 * t2_close, 1)
-        t3_closures = round(scaled_t3 * t3_close, 1)
+        t1_closures = round(t1_db * t1_close, 1)
+        t2_closures = round(t2_db * t2_close, 1)
+        t3_closures = round(t3_db * t3_close, 1)
         total_expected_closures = round(t1_closures + t2_closures + t3_closures, 1)
 
-        stars_per_gap    = (1.0 / denominator) * sw * 0.5
-        stars_all_closed = round(min(open_population * stars_per_gap, sw * 0.50), 4)
-        # Cap per campaign at star_weight × 0.15 — creates differentiation between measure weights
-        stars_expected   = round(min(total_expected_closures * stars_per_gap, sw * 0.15), 4)
+        # ── Stars formula using plan_population denominator ────────────
+        # stars_improvement = min((expected_closures / eligible_members) * star_weight * 0.5, star_weight * 0.10)
+        stars_improvement  = min(
+            (total_expected_closures / max(denominator, 1)) * sw * 0.5,
+            sw * 0.10
+        )
+        stars_improvement  = round(stars_improvement, 6)
+        stars_all_closed   = round(min(open_population / max(denominator, 1) * sw * 0.5, sw * 0.50), 4)
+        stars_expected     = stars_improvement  # alias for compatibility
+        stars_per_gap      = round((1.0 / max(denominator, 1)) * sw * 0.5, 8)
 
-        # PMPM-based CMS bonus: stars × plan_total_members × annual_pmpm × 5%
-        cms_bonus_all      = round(stars_all_closed * plan_members * annual_pmpm * 0.05)
-        cms_bonus_expected = round(stars_expected   * plan_members * annual_pmpm * 0.05)
-        net_return         = cms_bonus_expected - total_cost
+        # ── CMS bonus from plan_revenue ────────────────────────────────
+        cms_bonus = round(stars_improvement * plan_revenue * 0.05)
+        cms_bonus_all = round(stars_all_closed * plan_revenue * 0.05)
+        cms_bonus_expected = cms_bonus
 
-        roi_ratio_raw = round(cms_bonus_expected / max(total_cost, 1), 1)
+        # ── Outreach costs ─────────────────────────────────────────────
+        tier1_cost = int(round(t1_db * T1_COST))
+        tier2_cost = int(round(t2_db * T2_COST))
+        tier3_cost = int(round(t3_db * T3_COST))
+        total_outreach_cost = tier1_cost + tier2_cost + tier3_cost
+        total_cost = total_outreach_cost  # alias
+
+        net_return = cms_bonus - total_outreach_cost
+        roi_ratio_raw = round(net_return / max(total_outreach_cost, 1), 1)
         roi_ratio = min(roi_ratio_raw, 999.0)
+
+        notes = []
+        if roi_ratio > 100:
+            notes.append("Verify with full plan data")
 
         results.append({
             "measure_key": mk,
@@ -474,8 +490,9 @@ def get_opportunities_financial():
             "star_rating_current": d["star_rating_current"],
             "star_rating_target":  d["star_rating_target"],
             "denominator": round(denominator),
+            "eligible_members": round(denominator),
             "open_population": round(open_population),
-            "total_in_db": d["total_in_db"] or 0,
+            "total_in_db": d.get("eligible_members") or 0,
             "open_gaps": open_gaps_db,
             "closed_gaps": d["closed_gaps"] or 0,
             "compliance_rate": compliance_rate,
@@ -486,29 +503,325 @@ def get_opportunities_financial():
             "tier1_count": t1_db, "tier2_count": t2_db, "tier3_count": t3_db,
             "tier1_cost": tier1_cost, "tier2_cost": tier2_cost, "tier3_cost": tier3_cost,
             "total_cost": total_cost,
+            "total_outreach_cost": total_outreach_cost,
             "tier1_closures": t1_closures, "tier2_closures": t2_closures, "tier3_closures": t3_closures,
             "total_expected_closures": total_expected_closures,
             "tier1_closure_rate": t1_close, "tier2_closure_rate": t2_close, "tier3_closure_rate": t3_close,
             "tier1_basis": closure_basis, "tier2_basis": closure_basis, "tier3_basis": closure_basis,
-            "stars_per_gap": round(stars_per_gap, 6),
+            "stars_per_gap": stars_per_gap,
             "stars_all_closed": stars_all_closed,
+            "stars_improvement": stars_improvement,
             "stars_expected": stars_expected,
             "plan_revenue": int(plan_revenue),
             "plan_total_members": plan_members,
             "plan_pmpm_monthly": plan_pmpm,
             "annual_pmpm": annual_pmpm,
+            "cms_bonus": cms_bonus,
             "cms_bonus_all": cms_bonus_all,
             "cms_bonus_expected": cms_bonus_expected,
             "net_return": net_return,
             "roi_ratio": roi_ratio,
             "roi_ratio_raw": roi_ratio_raw,
-            # Plan-level summary (correct distinct-member counts, same for all rows of same plan)
+            "notes": notes,
+            # Plan-level summary
             "plan_open_gaps": plan_summary.get(pk, {}).get("plan_open_gaps", open_gaps_db),
             "plan_members_at_risk": plan_summary.get(pk, {}).get("plan_members_at_risk", round(open_population)),
         })
 
     results.sort(key=lambda x: x["roi_ratio"], reverse=True)
     return results
+
+
+# ── GET /data/status ──────────────────────────────────────────────────────────
+
+@app.get("/data/status")
+def get_data_status():
+    today_str = str(date.today())
+    with get_db() as conn:
+        members_count = conn.execute("SELECT COUNT(*) FROM dim_member").fetchone()[0]
+        gaps_count    = conn.execute("SELECT COUNT(*) FROM fact_member_gap").fetchone()[0]
+        plans_count   = conn.execute("SELECT COUNT(*) FROM dim_plan_contract").fetchone()[0]
+        runs_count    = conn.execute(
+            "SELECT COUNT(DISTINCT nba_run_id) FROM fact_nba_trace"
+        ).fetchone()[0]
+    return {
+        "members": {"count": members_count, "source": "demo", "updated": today_str},
+        "gaps":    {"count": gaps_count,    "source": "demo", "updated": today_str},
+        "plans":   {"count": plans_count,   "source": "demo", "updated": today_str},
+        "runs":    {"count": runs_count},
+    }
+
+
+# ── GET /data/templates/members ───────────────────────────────────────────────
+
+@app.get("/data/templates/members")
+def get_template_members():
+    rows = [
+        "member_id,date_of_birth,gender,language_preference,digital_literacy_segment,socioeconomic_segment,email_allowed,sms_allowed,call_allowed,preferred_channel,do_not_contact_flag",
+        "MEM10001,1948-03-15,F,EN,High,Mid,true,true,true,EMAIL,false",
+        "MEM10002,1955-07-22,M,ES,Low,Low,false,false,true,CALL,false",
+        "MEM10003,1942-11-08,F,ZH,Medium,Mid,true,false,true,CALL,false",
+    ]
+    content = "\n".join(rows)
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=member_template.csv"}
+    )
+
+
+# ── GET /data/templates/gaps ──────────────────────────────────────────────────
+
+@app.get("/data/templates/gaps")
+def get_template_gaps():
+    rows = [
+        "member_id,measure_code,plan_id,measurement_year,gap_status,gap_open_date,clinical_risk_score,days_open,nba_propensity_score,upstream_recommended_channel,upstream_recommended_incentive",
+        "MEM10001,BCS,P001,2026,Open,2026-01-15,0.72,187,0.65,EMAIL,GIFTCARD_25",
+        "MEM10002,COL,P002,2026,Borderline,2026-02-01,0.55,170,0.48,SMS,FIT_KIT_MAILER",
+        "MEM10003,EED,P001,2026,Open,2026-03-10,0.80,132,0.70,CALL,GIFTCARD_15",
+    ]
+    content = "\n".join(rows)
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=gaps_template.csv"}
+    )
+
+
+# ── GET /data/templates/plans ─────────────────────────────────────────────────
+
+@app.get("/data/templates/plans")
+def get_template_plans():
+    rows = [
+        "plan_id,plan_name,region,segment,current_star_rating,target_star_rating,annual_revenue,total_members",
+        "P001,Aetna Medicare Choice PPO (Northeast),Northeast,MAPD,3.5,4.0,450000000,45000",
+        "P002,Aetna Medicare Premier PPO (Southeast),Southeast,MAPD,3.8,4.5,380000000,38000",
+        "P003,Aetna Medicare DSNP Community (Midwest),Midwest,DSNP,3.0,3.5,280000000,28000",
+    ]
+    content = "\n".join(rows)
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=plans_template.csv"}
+    )
+
+
+# ── POST /data/upload/members ─────────────────────────────────────────────────
+
+REQUIRED_MEMBER_COLS = {
+    "member_id", "date_of_birth", "gender", "language_preference",
+    "digital_literacy_segment", "socioeconomic_segment"
+}
+
+@app.post("/data/upload/members")
+async def upload_members(file: UploadFile = File(...)):
+    filename = (file.filename or "").lower()
+    if filename.endswith(".xlsx") or filename.endswith(".xls"):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Excel upload requires additional setup; please use CSV format"}
+        )
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    headers = set(reader.fieldnames or [])
+    missing = REQUIRED_MEMBER_COLS - headers
+    if missing:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Missing required columns: {sorted(missing)}"}
+        )
+
+    imported, skipped, errors = 0, 0, []
+    member_rows, channel_rows = [], []
+
+    for i, row in enumerate(reader, start=1):
+        mid = (row.get("member_id") or "").strip()
+        if not mid:
+            skipped += 1
+            continue
+        mk = f"M_{i:04d}"
+        lang = (row.get("language_preference") or "EN").strip().upper()
+        dig  = (row.get("digital_literacy_segment") or "Medium").strip()
+        ses  = (row.get("socioeconomic_segment") or "Mid").strip()
+        gender = (row.get("gender") or "U").strip().upper()
+        dob    = (row.get("date_of_birth") or "").strip()
+        member_rows.append((mk, "", "", gender, lang, dig, ses, mid))
+        email_ok = (row.get("email_allowed") or "false").strip().lower()
+        sms_ok   = (row.get("sms_allowed")   or "false").strip().lower()
+        call_ok  = (row.get("call_allowed")   or "false").strip().lower()
+        pref     = (row.get("preferred_channel") or "CALL").strip().upper()
+        dnc      = (row.get("do_not_contact_flag") or "false").strip().lower()
+        channel_rows.append((mk, email_ok, sms_ok, call_ok, pref, dnc, ""))
+        imported += 1
+
+    with get_db() as conn:
+        conn.execute("DELETE FROM dim_member")
+        conn.execute("DELETE FROM dim_member_channel_pref")
+        conn.executemany(
+            "INSERT OR REPLACE INTO dim_member (member_key,plan_key,age_band,gender,language_preference,digital_literacy_segment,socioeconomic_segment,display_name) VALUES (?,?,?,?,?,?,?,?)",
+            member_rows
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO dim_member_channel_pref (member_key,email_allowed,sms_allowed,call_allowed,preferred_channel,do_not_contact_flag,channel_risk_notes) VALUES (?,?,?,?,?,?,?)",
+            channel_rows
+        )
+
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+# ── POST /data/upload/gaps ────────────────────────────────────────────────────
+
+REQUIRED_GAP_COLS = {"member_id", "measure_code", "plan_id", "measurement_year", "gap_status", "gap_open_date", "clinical_risk_score", "days_open"}
+
+@app.post("/data/upload/gaps")
+async def upload_gaps(file: UploadFile = File(...)):
+    filename = (file.filename or "").lower()
+    if filename.endswith(".xlsx") or filename.endswith(".xls"):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Excel upload requires additional setup; please use CSV format"}
+        )
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    headers = set(reader.fieldnames or [])
+    missing = REQUIRED_GAP_COLS - headers
+    if missing:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Missing required columns: {sorted(missing)}"}
+        )
+
+    with get_db() as conn:
+        measure_map = {r[0]: r[1] for r in conn.execute(
+            "SELECT measure_code, measure_key FROM dim_measure"
+        ).fetchall()}
+
+    imported, skipped, errors = 0, 0, []
+    gap_rows = []
+
+    for i, row in enumerate(reader, start=1):
+        mid  = (row.get("member_id") or "").strip()
+        mc   = (row.get("measure_code") or "").strip().upper()
+        pk   = (row.get("plan_id") or "").strip()
+        if not mid or not mc or not pk:
+            skipped += 1
+            continue
+        mk = measure_map.get(mc, "")
+        gk = f"G_UPLOAD_{i:06d}"
+        status   = (row.get("gap_status") or "Open").strip()
+        year     = int(row.get("measurement_year") or 2026)
+        days_open = int(row.get("days_open") or 0)
+        risk      = float(row.get("clinical_risk_score") or 0.5)
+        propensity = float(row.get("nba_propensity_score") or 0.5)
+        channel   = (row.get("upstream_recommended_channel") or "").strip()
+        incentive = (row.get("upstream_recommended_incentive") or "").strip()
+        gap_rows.append((gk, mid, mk, mc, pk, status, year, days_open, propensity, risk, "false", "false"))
+        imported += 1
+
+    with get_db() as conn:
+        conn.execute("DELETE FROM fact_member_gap")
+        conn.executemany(
+            """INSERT OR REPLACE INTO fact_member_gap
+               (member_gap_key,member_key,measure_key,measure_code,plan_key,gap_status,
+                measurement_year,days_open,nba_propensity_score,clinical_risk_score,
+                previous_year_gap_flag,is_suppressed)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            gap_rows
+        )
+
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+# ── POST /data/upload/plans ───────────────────────────────────────────────────
+
+REQUIRED_PLAN_COLS = {"plan_id", "plan_name", "region", "segment", "current_star_rating", "target_star_rating"}
+
+@app.post("/data/upload/plans")
+async def upload_plans(file: UploadFile = File(...)):
+    filename = (file.filename or "").lower()
+    if filename.endswith(".xlsx") or filename.endswith(".xls"):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Excel upload requires additional setup; please use CSV format"}
+        )
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    headers = set(reader.fieldnames or [])
+    missing = REQUIRED_PLAN_COLS - headers
+    if missing:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Missing required columns: {sorted(missing)}"}
+        )
+
+    imported, skipped, errors = 0, 0, []
+    plan_rows, pop_rows = [], []
+
+    for i, row in enumerate(reader, start=1):
+        pk = (row.get("plan_id") or "").strip()
+        if not pk:
+            skipped += 1
+            continue
+        name    = (row.get("plan_name") or pk).strip()
+        region  = (row.get("region") or "").strip()
+        segment = (row.get("segment") or "MAPD").strip()
+        cur_star = float(row.get("current_star_rating") or 3.0)
+        tgt_star = float(row.get("target_star_rating") or 4.0)
+        revenue  = int(float(row.get("annual_revenue") or 0))
+        members  = int(float(row.get("total_members") or 500))
+        plan_rows.append((pk, name, "", region, segment, cur_star, tgt_star, revenue, members, 1100))
+        pop_rows.append((pk, members, revenue))
+        imported += 1
+
+    today_str = str(date.today())
+    with get_db() as conn:
+        conn.execute("DELETE FROM dim_plan_contract")
+        conn.execute("DELETE FROM plan_population")
+        conn.executemany(
+            """INSERT OR REPLACE INTO dim_plan_contract
+               (plan_key,plan_name,contract_id,region,segment,star_rating_current,star_rating_target,
+                plan_annual_revenue,total_members,plan_pmpm_monthly) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            plan_rows
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO plan_population (plan_key,total_members,plan_revenue,last_updated) VALUES (?,?,?,?)",
+            [(pk, m, r, today_str) for pk, m, r in pop_rows]
+        )
+
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+# ── POST /data/reset ──────────────────────────────────────────────────────────
+
+@app.post("/data/reset")
+def data_reset():
+    import subprocess as _sp
+    base = os.path.dirname(os.path.abspath(__file__))
+    for script_name in ("seed_demo_data.py", "seed_expansion.py"):
+        script = os.path.join(base, script_name)
+        if os.path.exists(script):
+            r = _sp.run([sys.executable, script], capture_output=True, text=True, timeout=180)
+            if r.returncode != 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"{script_name} failed: {r.stderr[-300:]}"
+                )
+    return {"status": "ok", "message": "Demo data restored"}
 
 
 # ── GET /plans ────────────────────────────────────────────────────────────────
