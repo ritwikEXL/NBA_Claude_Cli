@@ -632,8 +632,9 @@ CRITICAL RULES:
 - Confidence level based on data quality: eligible population size, whether historical data exists.
 - Define tiers based on what you actually observe in the data — propensity distribution, channel
   consent, digital literacy. Do not use generic 0.70/0.45 thresholds unless the data supports them.
-- plain_english_summary: 3-4 sentences a VP of Quality at Aetna would understand. Specific numbers.
-  What the opportunity is, who to target, what it costs, what they get back."""
+- plain_english_summary: 2-3 sentences max. Specific numbers only.
+- All rationale fields: 1-2 sentences max. Be specific but brief — cite the key number and why.
+- key_risks and key_opportunities: 2-3 items each, one sentence per item."""
 
     user_message = f"""Analyze the gap closure opportunity for measure {measure_key} on plan {plan_key}.
 
@@ -667,7 +668,7 @@ In plain_english_summary: be specific with numbers. Do not use generic language.
             messages=[{"role": "system", "content": system_prompt}] + messages,
             tools=TOOLS,
             tool_choice="auto",
-            max_tokens=4000,
+            max_tokens=8000,
         )
 
         msg = response.choices[0].message
@@ -684,7 +685,25 @@ In plain_english_summary: be specific with numbers. Do not use generic language.
             break
 
         for tc in msg.tool_calls:
-            args = json.loads(tc.function.arguments)
+            raw = tc.function.arguments
+            try:
+                args = json.loads(raw)
+            except json.JSONDecodeError:
+                # Response was truncated — strip trailing incomplete content and retry
+                truncated = raw.rstrip()
+                # Remove trailing incomplete key-value pairs
+                for end_char in ['}', ']']:
+                    last = truncated.rfind(end_char)
+                    if last != -1:
+                        candidate = truncated[:last+1]
+                        try:
+                            args = json.loads(candidate)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                else:
+                    logging.error(f"[financial] Could not parse tool args for {tc.function.name}")
+                    continue
             result = _dispatch_tool(tc.function.name, args, source_id)
             if tc.function.name == 'write_financial_analysis':
                 logging.info(f"[financial] Analysis written for {measure_key} x {plan_key}")
