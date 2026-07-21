@@ -1065,26 +1065,32 @@ async function handleDatasourceFiles(fileList){
   },3000);
 }
 
-async function runAiAnalysis(measureKey, planKey, btnEl){
+// Tracks in-progress analyses so render() can restore button state
+const _activeAnalyses={};
+
+async function runAiAnalysis(measureKey,planKey){
   if(measureKey&&planKey){
-    // Per-card analysis trigger
-    const btn=btnEl||null;
-    if(btn){btn.disabled=true;btn.textContent='🤖 Analyzing...';}
+    const key=measureKey+'_'+planKey;
+    if(_activeAnalyses[key])return;
+    _activeAnalyses[key]={dots:0};
+    render();
     try{
       const kickResp=await fetch(`${API}/financial/analyze/${measureKey}/${planKey}`,{method:'POST'});
-      if(!kickResp.ok)throw new Error(kickResp.status);
+      if(!kickResp.ok)throw new Error('HTTP '+kickResp.status);
       const kick=await kickResp.json();
       if(kick.status==='cached'){
         const fin=await apiGet('/opportunities/financial');
-        S.oppFinancial=fin;render();
-        if(btn){btn.disabled=false;btn.textContent='🤖 Re-run Analysis';}
+        S.oppFinancial=fin;
+        delete _activeAnalyses[key];
+        render();
         return;
       }
       const jobId=kick.job_id;
-      let dots=0;
+      let _jobMiss=0;
       const interval=setInterval(async()=>{
-        dots=(dots%3)+1;
-        if(btn)btn.textContent='🤖 Analyzing'+'.'.repeat(dots);
+        _activeAnalyses[key].dots=((_activeAnalyses[key].dots||0)%3)+1;
+        const liveBtn=document.querySelector(`[data-analysis-key="${key}"]`);
+        if(liveBtn)liveBtn.textContent='🤖 Analyzing'+'.'.repeat(_activeAnalyses[key].dots);
         try{
           const st=await apiGet('/financial/analyze-all/status');
           const job=st[jobId];
@@ -1092,31 +1098,36 @@ async function runAiAnalysis(measureKey, planKey, btnEl){
             clearInterval(interval);
             const fin=await apiGet('/opportunities/financial');
             const card=fin.find(o=>o.measure_key===measureKey&&o.plan_key===planKey);
+            delete _activeAnalyses[key];
             if(card&&card.ai_analysis){
               S.oppFinancial=fin;render();
             }else{
+              render();
               const errMsg=job.analysis&&job.analysis.error?job.analysis.error:'Analysis ran but produced no output — check ANTHROPIC_API_KEY in .env';
-              if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
               alert('Analysis incomplete: '+errMsg);
             }
           }else if(job&&job.status==='error'){
             clearInterval(interval);
-            if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
+            delete _activeAnalyses[key];
+            render();
             alert('Analysis error: '+(job.error||'unknown'));
           }else if(!job){
-            _jobMiss=((_jobMiss||0)+1);
-            if(_jobMiss>5){clearInterval(interval);if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}alert('Server restarted during analysis — please try again.');}
+            _jobMiss++;
+            if(_jobMiss>5){clearInterval(interval);delete _activeAnalyses[key];render();alert('Server restarted during analysis — please try again.');}
           }
-        }catch(e){}
+        }catch(e){console.error('[AI Analysis] poll error:',e);}
       },3000);
-      setTimeout(()=>{clearInterval(interval);if(btn&&btn.disabled){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}alert('Analysis timed out after 3 minutes — server may be busy.')},180000);
+      setTimeout(()=>{
+        if(_activeAnalyses[key]){clearInterval(interval);delete _activeAnalyses[key];render();alert('Analysis timed out after 3 minutes — server may be busy.');}
+      },180000);
     }catch(e){
-      if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
+      console.error('[AI Analysis] start error:',e);
+      delete _activeAnalyses[key];
+      render();
       alert('Could not start analysis: '+e.message);
     }
     return;
   }
-  // Full portfolio analysis (legacy flow)
   return runAiAnalysisAll();
 }
 async function runAiAnalysisAll(){
@@ -2543,7 +2554,7 @@ function renderOpp(){
 <div style="border:1px dashed var(--g200);border-radius:6px;padding:.9rem 1rem;margin-top:.5rem;text-align:center;background:var(--g50)">
   <div style="font-size:.8rem;color:var(--g500);margin-bottom:.6rem">Financial projections require AI analysis</div>
   <div style="font-size:.72rem;color:var(--g400);margin-bottom:.75rem">Run the AI analysis to get Claude-generated closure rates, outreach costs, and ROI based on your actual member population data.</div>
-  <button onclick="runAiAnalysis('${o.measure_key}','${o.plan_key}',this)" style="background:var(--teal);color:#fff;border:none;padding:.45rem 1.1rem;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer">🤖 Run AI Analysis</button>
+  ${_activeAnalyses[o.measure_key+'_'+o.plan_key]?`<button disabled data-analysis-key="${o.measure_key}_${o.plan_key}" style="background:var(--teal);color:#fff;border:none;padding:.45rem 1.1rem;border-radius:6px;font-size:.78rem;font-weight:600;opacity:.7;cursor:not-allowed">🤖 Analyzing...</button>`:`<button onclick="runAiAnalysis('${o.measure_key}','${o.plan_key}')" style="background:var(--teal);color:#fff;border:none;padding:.45rem 1.1rem;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer">🤖 Run AI Analysis</button>`}
 </div>`}
           </div>
         </div>
