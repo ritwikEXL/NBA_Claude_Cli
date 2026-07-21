@@ -1,6 +1,6 @@
 nba_run_id,timestamp,agent,step,input_summary,output_summary,affected_population_count
-RUN_PHASE1_20260512_104500,2026-05-12T10:45:00Z,Opportunity,OPPORTUNITY_SELECTED,"Scanned BCS/COL/EED across 4 plans","Selected EED x P003 (Aurora DSNP Community); materialized in-scope gaps in fact_nba_claude_decision",2
-RUN_PHASE1_20260512_104500,2026-05-12T10:47:00Z,Segmentation,COHORTS_ASSIGNED,"2 in-scope EED x P003 gaps","Assigned C1_DIGITAL_HIGH_PROP (rank 1) and C2_LANG_BARRIER_LOW_LIT (rank 2)",2
-RUN_PHASE1_20260512_104500,2026-05-12T10:50:00Z,Campaign,CAMPAIGNS_CREATED,"2 cohorts in EED x P003","Created CMP-EED-DIGITAL and CMP-EED-OUTREACH; refined channel/incentive/SLA/explanation on 2 decision rows",2
-RUN_PHASE1_20260512_104500,2026-05-12T10:52:00Z,Outreach,OUTREACH_PLAN_CREATED,"2 campaigns x 2 member-gaps","Generated 5 PLANNED contacts (1 EMAIL + 1 SMS for G00008; 2 CALL + 1 SMS for G00009) over 14 days",5
-RUN_PHASE1_20260512_104500,2026-05-12T10:52:30Z,Outreach,RUN_SUMMARY,"EED x P003 NBA run","Targeted 2 gaps across 2 cohorts via 2 campaigns; 5 planned contacts; expected ~1.0 incremental EED closure",2
+RUN_20260624_234042,2026-06-24T23:40:42,Opportunity,OPPORTUNITY_SELECTED,4 measures × 5 plans scanned,EED × Aurora MA-PD Signature selected; 5 addressable gaps; star_weight=2,5
+RUN_20260624_234042,2026-06-24T23:40:42,Segmentation,COHORTS_ASSIGNED,5 in-scope gaps,C1_DIGITAL_HIGH_PROP(3),3
+RUN_20260624_234042,2026-06-24T23:40:42,Campaign,CAMPAIGN_CREATED,1 cohorts targeted,CMP_20260624_234042_01; C1:Email+SMS; C2:Call (preferred channel); C1:$15 Gift Card; C2:$25 Gift Card,3
+RUN_20260624_234042,2026-06-24T23:40:44,Outreach,OUTREACH_PLAN_CREATED,1 campaign × 1 cohorts × 3 gaps,6 planned contacts,3
+RUN_20260624_234042,2026-06-24T23:40:44,Outreach,RUN_SUMMARY,EED × Aurora MA-PD Signature complete,3 gaps targeted; 6 contacts planned; +26% avg lift,3

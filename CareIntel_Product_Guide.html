@@ -1,0 +1,1125 @@
+
+<title>CareIntel — Product & Architecture Guide</title>
+<style>
+/* ── Tokens ───────────────────────────────────────────────────────── */
+:root {
+  --bg:       #0A0F1E;
+  --surface:  #111827;
+  --surface2: #1A2235;
+  --border:   #1E2D45;
+  --border2:  #263650;
+  --text:     #E2EAF4;
+  --muted:    #7A90AB;
+  --faint:    #3A5070;
+  --teal:     #14B8A6;
+  --teal-dim: rgba(20,184,166,.12);
+  --indigo:   #818CF8;
+  --indigo-dim: rgba(99,102,241,.12);
+  --amber:    #F59E0B;
+  --amber-dim: rgba(245,158,11,.10);
+  --green:    #34D399;
+  --green-dim: rgba(52,211,153,.10);
+  --red:      #F87171;
+  --heading-font: Georgia, 'Times New Roman', serif;
+  --body-font: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --mono-font: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --nav-w: 220px;
+  --max-w: 860px;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:       #F5F8FC;
+    --surface:  #FFFFFF;
+    --surface2: #EDF2F8;
+    --border:   #D1DCE8;
+    --border2:  #B8CCDE;
+    --text:     #0F1B2D;
+    --muted:    #5A7088;
+    --faint:    #B0C4D8;
+    --teal-dim: rgba(20,184,166,.10);
+    --indigo-dim: rgba(99,102,241,.08);
+    --amber-dim: rgba(245,158,11,.08);
+    --green-dim: rgba(52,211,153,.08);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0A0F1E;--surface:#111827;--surface2:#1A2235;--border:#1E2D45;--border2:#263650;
+  --text:#E2EAF4;--muted:#7A90AB;--faint:#3A5070;
+  --teal-dim:rgba(20,184,166,.12);--indigo-dim:rgba(99,102,241,.12);
+  --amber-dim:rgba(245,158,11,.10);--green-dim:rgba(52,211,153,.10);
+}
+:root[data-theme="light"] {
+  --bg:#F5F8FC;--surface:#FFFFFF;--surface2:#EDF2F8;--border:#D1DCE8;--border2:#B8CCDE;
+  --text:#0F1B2D;--muted:#5A7088;--faint:#B0C4D8;
+  --teal-dim:rgba(20,184,166,.10);--indigo-dim:rgba(99,102,241,.08);
+  --amber-dim:rgba(245,158,11,.08);--green-dim:rgba(52,211,153,.08);
+}
+
+/* ── Reset & base ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 15px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body-font);
+  line-height: 1.7;
+  min-height: 100vh;
+}
+a { color: var(--teal); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font-family: var(--mono-font);
+  font-size: .82em;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .1em .4em;
+  color: var(--teal);
+}
+pre {
+  font-family: var(--mono-font);
+  font-size: .8rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.1rem 1.25rem;
+  overflow-x: auto;
+  color: var(--text);
+  line-height: 1.6;
+}
+pre code { background: none; border: none; padding: 0; color: inherit; font-size: 1em; }
+
+/* ── Layout shell ─────────────────────────────────────────────────── */
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── Sidebar nav ──────────────────────────────────────────────────── */
+.sidenav {
+  width: var(--nav-w);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 2rem 0 2rem 1.5rem;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+.sidenav .logo {
+  font-family: var(--heading-font);
+  font-size: 1.15rem;
+  color: var(--teal);
+  margin-bottom: .25rem;
+  font-style: italic;
+  letter-spacing: -.01em;
+}
+.sidenav .tagline {
+  font-size: .7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 1.75rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .75rem;
+}
+.sidenav nav { display: flex; flex-direction: column; gap: .05rem; }
+.sidenav a {
+  font-size: .76rem;
+  color: var(--muted);
+  padding: .3rem .5rem .3rem 0;
+  border-radius: 4px;
+  transition: color .15s;
+  display: block;
+}
+.sidenav a:hover, .sidenav a.active { color: var(--teal); text-decoration: none; }
+.sidenav .nav-section {
+  font-size: .65rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--faint);
+  margin: 1.1rem 0 .3rem;
+}
+
+/* ── Main content ─────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: 3rem 3.5rem 5rem 3.5rem;
+}
+.content { max-width: var(--max-w); }
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+.hero {
+  margin-bottom: 3.5rem;
+  padding-bottom: 2.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.hero-eyebrow {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--teal);
+  margin-bottom: .75rem;
+}
+.hero h1 {
+  font-family: var(--heading-font);
+  font-size: 2.6rem;
+  line-height: 1.2;
+  font-weight: normal;
+  color: var(--text);
+  text-wrap: balance;
+  margin-bottom: 1rem;
+  letter-spacing: -.02em;
+}
+.hero h1 em { color: var(--teal); font-style: normal; }
+.hero .mission {
+  font-size: 1.05rem;
+  color: var(--muted);
+  max-width: 640px;
+  margin-bottom: 1.5rem;
+  line-height: 1.65;
+}
+.hero-pills { display: flex; gap: .5rem; flex-wrap: wrap; }
+.pill {
+  font-size: .72rem;
+  padding: .3rem .8rem;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  font-family: var(--mono-font);
+}
+.pill.teal { border-color: var(--teal); color: var(--teal); background: var(--teal-dim); }
+.pill.indigo { border-color: var(--indigo); color: var(--indigo); background: var(--indigo-dim); }
+.pill.amber { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); }
+
+/* ── Section headings ─────────────────────────────────────────────── */
+.section { margin-bottom: 3.5rem; scroll-margin-top: 1.5rem; }
+.section-label {
+  font-size: .67rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--faint);
+  margin-bottom: .5rem;
+}
+.section h2 {
+  font-family: var(--heading-font);
+  font-size: 1.65rem;
+  font-weight: normal;
+  color: var(--text);
+  text-wrap: balance;
+  margin-bottom: 1.25rem;
+  letter-spacing: -.015em;
+}
+.section h3 {
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 1.5rem 0 .6rem;
+}
+.section p { color: var(--muted); margin-bottom: .9rem; max-width: 700px; }
+
+/* ── Architecture diagram ─────────────────────────────────────────── */
+.arch {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+}
+.arch-grid {
+  display: grid;
+  grid-template-columns: 1fr 40px 1fr 40px 1fr 40px 1fr;
+  gap: 0;
+  align-items: center;
+  min-width: 640px;
+}
+.arch-col { display: flex; flex-direction: column; gap: .5rem; }
+.arch-box {
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: .65rem .8rem;
+  background: var(--surface2);
+  font-size: .75rem;
+}
+.arch-box .ab-label {
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  margin-bottom: .25rem;
+}
+.arch-box .ab-name { font-weight: 600; color: var(--text); }
+.arch-box .ab-sub { font-size: .68rem; color: var(--muted); margin-top: .15rem; }
+.arch-box.teal { border-color: var(--teal); background: var(--teal-dim); }
+.arch-box.indigo { border-color: var(--indigo); background: var(--indigo-dim); }
+.arch-box.amber { border-color: var(--amber); background: var(--amber-dim); }
+.arch-box.green { border-color: var(--green); background: var(--green-dim); }
+.arch-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  font-size: .9rem;
+  padding: 0 4px;
+}
+.arch-title {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: .75rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .5rem;
+}
+
+/* ── Agent flow ───────────────────────────────────────────────────── */
+.agent-flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin: 1.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.agent-phase {
+  padding: 1.1rem .9rem;
+  border-right: 1px solid var(--border);
+  position: relative;
+}
+.agent-phase:last-child { border-right: none; }
+.agent-phase::after {
+  content: '→';
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--faint);
+  font-size: .8rem;
+  z-index: 1;
+}
+.agent-phase:last-child::after { display: none; }
+.ap-num {
+  font-size: .65rem;
+  font-family: var(--mono-font);
+  color: var(--muted);
+  margin-bottom: .3rem;
+}
+.ap-name { font-weight: 700; font-size: .82rem; color: var(--text); margin-bottom: .25rem; }
+.ap-agent { font-size: .7rem; color: var(--teal); margin-bottom: .5rem; }
+.ap-desc { font-size: .73rem; color: var(--muted); line-height: 1.5; }
+.ap-writes {
+  margin-top: .6rem;
+  font-size: .66rem;
+  color: var(--faint);
+  border-top: 1px solid var(--border);
+  padding-top: .4rem;
+}
+
+/* ── Feature grid ─────────────────────────────────────────────────── */
+.feature-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+.feat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.1rem 1.2rem;
+}
+.feat-card .fc-icon { font-size: 1.3rem; margin-bottom: .5rem; }
+.feat-card .fc-name { font-weight: 700; font-size: .88rem; margin-bottom: .3rem; }
+.feat-card .fc-desc { font-size: .77rem; color: var(--muted); line-height: 1.55; }
+.feat-card.accent-teal { border-color: var(--teal); }
+.feat-card.accent-indigo { border-color: var(--indigo); }
+.feat-card.accent-amber { border-color: var(--amber); }
+
+/* ── Data table ───────────────────────────────────────────────────── */
+.data-table-wrap { overflow-x: auto; margin: 1rem 0; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .78rem;
+}
+th {
+  background: var(--surface2);
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+  padding: .55rem .8rem;
+  border-bottom: 1px solid var(--border);
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  white-space: nowrap;
+}
+td {
+  padding: .55rem .8rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  vertical-align: top;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface2); }
+td code { font-size: .78em; }
+
+/* ── Callout boxes ────────────────────────────────────────────────── */
+.callout {
+  border-left: 3px solid var(--teal);
+  background: var(--teal-dim);
+  border-radius: 0 8px 8px 0;
+  padding: .9rem 1.1rem;
+  margin: 1.25rem 0;
+  font-size: .82rem;
+  color: var(--text);
+}
+.callout.indigo { border-color: var(--indigo); background: var(--indigo-dim); }
+.callout.amber { border-color: var(--amber); background: var(--amber-dim); }
+.callout strong { color: var(--teal); }
+.callout.indigo strong { color: var(--indigo); }
+.callout.amber strong { color: var(--amber); }
+.callout .co-title { font-weight: 700; margin-bottom: .3rem; }
+
+/* ── Step list ────────────────────────────────────────────────────── */
+.step-list { list-style: none; margin: 1rem 0; display: flex; flex-direction: column; gap: .9rem; }
+.step-list li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: .8rem;
+  align-items: start;
+  font-size: .82rem;
+  color: var(--muted);
+}
+.step-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .68rem;
+  font-family: var(--mono-font);
+  color: var(--teal);
+  flex-shrink: 0;
+  margin-top: .05rem;
+}
+.step-list li strong { color: var(--text); display: block; margin-bottom: .1rem; font-size: .83rem; }
+
+/* ── Endpoint list ────────────────────────────────────────────────── */
+.ep-list { display: flex; flex-direction: column; gap: .4rem; margin: .75rem 0; }
+.ep {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  font-size: .77rem;
+  padding: .45rem .7rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.ep-method {
+  font-family: var(--mono-font);
+  font-size: .65rem;
+  font-weight: 700;
+  padding: .15rem .4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.ep-method.get { background: var(--green-dim); color: var(--green); }
+.ep-method.post { background: var(--indigo-dim); color: var(--indigo); }
+.ep-method.put { background: var(--amber-dim); color: var(--amber); }
+.ep-method.del { background: rgba(248,113,113,.12); color: var(--red); }
+.ep-path { font-family: var(--mono-font); color: var(--text); flex-shrink: 0; }
+.ep-desc { color: var(--muted); flex: 1; }
+
+/* ── Roadmap ──────────────────────────────────────────────────────── */
+.roadmap { display: flex; flex-direction: column; gap: 1px; margin: 1.25rem 0; }
+.rm-item {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 1rem;
+  padding: .7rem .85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: .8rem;
+  align-items: center;
+}
+.rm-item:first-child { border-radius: 8px 8px 0 0; }
+.rm-item:last-child { border-radius: 0 0 8px 8px; }
+.rm-item + .rm-item { border-top: none; }
+.rm-status {
+  font-size: .67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: .2rem .55rem;
+  border-radius: 20px;
+  text-align: center;
+}
+.rm-status.done { background: var(--green-dim); color: var(--green); }
+.rm-status.wip  { background: var(--amber-dim); color: var(--amber); }
+.rm-status.next { background: var(--indigo-dim); color: var(--indigo); }
+.rm-status.later { background: var(--surface2); color: var(--muted); }
+.rm-desc { color: var(--muted); }
+.rm-desc strong { color: var(--text); display: block; margin-bottom: .1rem; }
+
+/* ── Progress bar ─────────────────────────────────────────────────── */
+.progress-wrap { margin: 1.25rem 0; }
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: .75rem;
+  color: var(--muted);
+  margin-bottom: .4rem;
+}
+.progress-track {
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 20px;
+  background: linear-gradient(90deg, var(--teal), var(--indigo));
+}
+
+/* ── Theme toggle ─────────────────────────────────────────────────── */
+.theme-btn {
+  position: fixed;
+  top: 1rem;
+  right: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: .3rem .8rem;
+  font-size: .72rem;
+  color: var(--muted);
+  cursor: pointer;
+  z-index: 100;
+  transition: color .15s, border-color .15s;
+}
+.theme-btn:hover { color: var(--teal); border-color: var(--teal); }
+
+/* ── Responsive ───────────────────────────────────────────────────── */
+@media (max-width: 800px) {
+  .sidenav { display: none; }
+  .main { padding: 2rem 1.25rem 4rem; }
+  .feature-grid { grid-template-columns: 1fr; }
+  .agent-flow { grid-template-columns: 1fr 1fr; }
+  .agent-phase::after { display: none; }
+  .arch-grid { grid-template-columns: 1fr 24px 1fr 24px 1fr 24px 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+
+<button class="theme-btn" onclick="(function(){const r=document.documentElement;const cur=r.getAttribute('data-theme')||'dark';r.setAttribute('data-theme',cur==='dark'?'light':'dark');})()">toggle theme</button>
+
+<div class="shell">
+
+<!-- ── Sidebar ─────────────────────────────────────────────────────── -->
+<aside class="sidenav">
+  <div class="logo">CareIntel</div>
+  <div class="tagline">NBA Platform Guide</div>
+  <nav>
+    <span class="nav-section">Overview</span>
+    <a href="#what-is">What is CareIntel?</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#tech-stack">Tech Stack</a>
+
+    <span class="nav-section">Data</span>
+    <a href="#data-inputs">Input Files</a>
+    <a href="#data-outputs">Output Tables</a>
+    <a href="#measures">HEDIS Measures</a>
+
+    <span class="nav-section">Features</span>
+    <a href="#features">Feature Map</a>
+    <a href="#agents">AI Agent Loop</a>
+    <a href="#api">API Endpoints</a>
+
+    <span class="nav-section">Using It</span>
+    <a href="#setup">Setup</a>
+    <a href="#flow">Demo Flow</a>
+    <a href="#upload">Uploading Data</a>
+
+    <span class="nav-section">Roadmap</span>
+    <a href="#status">Current Status</a>
+    <a href="#roadmap">What's Next</a>
+  </nav>
+</aside>
+
+<!-- ── Main ────────────────────────────────────────────────────────── -->
+<main class="main">
+<div class="content">
+
+<!-- ── Hero ──────────────────────────────────────────────────────── -->
+<div class="hero" id="what-is">
+  <div class="hero-eyebrow">Product & Architecture Guide · v0.3</div>
+  <h1>CareIntel — <em>Next Best Action</em><br>for Medicare Stars</h1>
+  <p class="mission">
+    CareIntel helps Medicare Advantage plan managers close HEDIS/Stars measure gaps faster by combining AI-driven opportunity analysis, member segmentation, campaign design, and multi-channel outreach — all in a single guided workflow. The platform turns raw member gap data into a prioritized outreach plan with projected CMS bonus impact in minutes.
+  </p>
+  <div class="hero-pills">
+    <span class="pill teal">FastAPI · Python</span>
+    <span class="pill teal">SQLite · WAL mode</span>
+    <span class="pill indigo">Claude AI · OpenRouter</span>
+    <span class="pill">Twilio WhatsApp/SMS</span>
+    <span class="pill">SendGrid Email</span>
+    <span class="pill amber">Medicare Stars · HEDIS</span>
+  </div>
+</div>
+
+<!-- ── Architecture ───────────────────────────────────────────────── -->
+<div class="section" id="architecture">
+  <div class="section-label">System Design</div>
+  <h2>Architecture</h2>
+  <p>CareIntel is a three-layer system: a data layer (SQLite + CSV inputs), a backend layer (FastAPI + AI agent loop), and a frontend layer (vanilla JS dashboard). All communication is REST over localhost — no build step needed.</p>
+
+  <div class="arch">
+    <div class="arch-title">End-to-End Data & Control Flow</div>
+    <div class="arch-grid">
+
+      <!-- Column 1: Data Sources -->
+      <div class="arch-col">
+        <div class="arch-box teal">
+          <div class="ab-label">Inputs</div>
+          <div class="ab-name">CSV Files</div>
+          <div class="ab-sub">fact_member_gap<br>dim_member<br>dim_measure<br>dim_plan_contract</div>
+        </div>
+        <div class="arch-box teal">
+          <div class="ab-label">Or Upload</div>
+          <div class="ab-name">Your Own Data</div>
+          <div class="ab-sub">.csv or .db file<br>auto-detected</div>
+        </div>
+      </div>
+
+      <div class="arch-arrow">→</div>
+
+      <!-- Column 2: SQLite DB -->
+      <div class="arch-col">
+        <div class="arch-box">
+          <div class="ab-label">Database</div>
+          <div class="ab-name">careintel.db</div>
+          <div class="ab-sub">SQLite · WAL mode<br>12 tables<br>single file</div>
+        </div>
+        <div class="arch-box">
+          <div class="ab-label">Output Tables</div>
+          <div class="ab-name">NBA Results</div>
+          <div class="ab-sub">decisions · campaigns<br>outreach · trace<br>evaluations</div>
+        </div>
+      </div>
+
+      <div class="arch-arrow">⇄</div>
+
+      <!-- Column 3: Backend -->
+      <div class="arch-col">
+        <div class="arch-box indigo">
+          <div class="ab-label">Backend · :8000</div>
+          <div class="ab-name">FastAPI (api.py)</div>
+          <div class="ab-sub">50+ REST endpoints<br>background tasks<br>webhooks</div>
+        </div>
+        <div class="arch-box indigo">
+          <div class="ab-label">AI Engine</div>
+          <div class="ab-name">agent_loop.py</div>
+          <div class="ab-sub">Claude via OpenRouter<br>7 DB tools<br>4-phase loop</div>
+        </div>
+      </div>
+
+      <div class="arch-arrow">⇄</div>
+
+      <!-- Column 4: Frontend -->
+      <div class="arch-col">
+        <div class="arch-box amber">
+          <div class="ab-label">Dashboard · :8080</div>
+          <div class="ab-name">index.html</div>
+          <div class="ab-sub">Opportunities tab<br>Run Session tab<br>Evaluation tab</div>
+        </div>
+        <div class="arch-box">
+          <div class="ab-label">External Channels</div>
+          <div class="ab-name">Twilio / SendGrid</div>
+          <div class="ab-sub">WhatsApp · SMS<br>Email outreach<br>Webhook replies</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="callout indigo">
+    <div class="co-title">Single-file deployment</div>
+    Everything runs locally. Two commands start the full system: <code>uvicorn api:app</code> on port 8000 for the backend, and <code>python -m http.server 8080</code> in the <code>dashboard/</code> directory for the frontend. No containers, no build pipeline.
+  </div>
+</div>
+
+<!-- ── Tech Stack ─────────────────────────────────────────────────── -->
+<div class="section" id="tech-stack">
+  <div class="section-label">Dependencies</div>
+  <h2>Tech Stack</h2>
+
+  <div class="data-table-wrap">
+    <table>
+      <thead><tr><th>Component</th><th>Technology</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Backend API</td><td><code>FastAPI</code> + <code>uvicorn</code></td><td>REST endpoints, background tasks, webhook handling</td></tr>
+        <tr><td>Database</td><td><code>SQLite</code> (WAL mode)</td><td>Single-file DB; safe concurrent reads from multiple threads</td></tr>
+        <tr><td>AI Agent</td><td><code>anthropic</code> SDK → OpenRouter</td><td>Claude Sonnet via OpenRouter for tool-use agentic loops</td></tr>
+        <tr><td>SMS / WhatsApp</td><td><code>twilio</code></td><td>Outbound messages, inbound webhook conversations</td></tr>
+        <tr><td>Email</td><td><code>sendgrid</code></td><td>Outbound member outreach emails</td></tr>
+        <tr><td>Tunnel</td><td><code>pyngrok</code></td><td>Exposes local :8000 to internet for Twilio webhook</td></tr>
+        <tr><td>Env config</td><td><code>python-dotenv</code></td><td>Reads <code>.env</code> for all secrets</td></tr>
+        <tr><td>Frontend</td><td>Vanilla HTML/JS/CSS</td><td>No build step; served by Python HTTP server</td></tr>
+        <tr><td>Data gen</td><td><code>generate_synthetic_data.py</code></td><td>Seeds 5 plans × 7 measures × N members of synthetic data</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Data Inputs ─────────────────────────────────────────────────── -->
+<div class="section" id="data-inputs">
+  <div class="section-label">Data Contracts</div>
+  <h2>Input Files (read-only)</h2>
+  <p>All source data lives in <code>input/</code>. These are treated as read-only — agents never modify them. You can replace them with your own CSVs or a SQLite <code>.db</code> file via the "Connect Data Source" upload in the dashboard.</p>
+
+  <div class="data-table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Key Columns</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>fact_member_gap.csv</code></td>
+          <td><code>member_gap_key</code>, <code>gap_status</code>, <code>nba_propensity_score</code>, <code>days_open</code></td>
+          <td>Core fact table — one row per member × measure × year. The engine that drives every decision.</td>
+        </tr>
+        <tr>
+          <td><code>dim_member.csv</code></td>
+          <td><code>member_key</code>, <code>age_band</code>, <code>digital_literacy_segment</code>, <code>language_preference</code></td>
+          <td>Member demographics used for cohort segmentation and channel selection.</td>
+        </tr>
+        <tr>
+          <td><code>dim_member_channel_pref.csv</code></td>
+          <td><code>member_key</code>, <code>sms_allowed</code>, <code>email_allowed</code>, <code>preferred_channel</code>, <code>do_not_contact_flag</code></td>
+          <td>Channel permissions and DNC flags. Always respected by the outreach agent.</td>
+        </tr>
+        <tr>
+          <td><code>dim_measure.csv</code></td>
+          <td><code>measure_key</code>, <code>measure_code</code>, <code>star_weight</code>, <code>hedis_domain</code></td>
+          <td>HEDIS/Stars measure definitions including Star weight used in all ROI calculations.</td>
+        </tr>
+        <tr>
+          <td><code>dim_member_channel_pref.csv</code></td>
+          <td><code>plan_key</code>, <code>plan_name</code>, <code>star_rating_current</code>, <code>star_rating_target</code>, <code>plan_pmpm_monthly</code></td>
+          <td>Plan-level metadata. PMPM drives the CMS bonus formula.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout amber">
+    <div class="co-title">Uploading your own data</div>
+    Column names must match exactly. The auto-detector fingerprints each CSV by its headers — if it finds <code>member_gap_key</code> + <code>gap_status</code> + <code>nba_propensity_score</code>, it maps the file to <code>fact_member_gap</code>. You can upload a mix of files or a single <code>.db</code> file containing multiple tables.
+  </div>
+</div>
+
+<!-- ── Data Outputs ────────────────────────────────────────────────── -->
+<div class="section" id="data-outputs">
+  <div class="section-label">Data Contracts</div>
+  <h2>Output Tables (written by agents)</h2>
+
+  <div class="data-table-wrap">
+    <table>
+      <thead><tr><th>Table</th><th>Written by</th><th>Contents</th></tr></thead>
+      <tbody>
+        <tr><td><code>fact_nba_claude_decision</code></td><td>Segmentation + Campaign agents</td><td>One row per member gap — cohort assignment, channel, incentive, priority score, expected lift, explanation text.</td></tr>
+        <tr><td><code>dim_nba_campaign</code></td><td>Campaign agent</td><td>One row per campaign — channel strategy, frequency plan, incentive, message template.</td></tr>
+        <tr><td><code>fact_nba_outreach_plan</code></td><td>Outreach agent</td><td>One row per planned contact — channel, datetime, incentive offered, status (PLANNED → SENT → COMPLETED).</td></tr>
+        <tr><td><code>fact_nba_trace</code></td><td>All agents</td><td>Audit log — every agent step with input/output summaries and affected population counts.</td></tr>
+        <tr><td><code>claude_opportunity_analysis</code></td><td>AI analysis loop</td><td>Claude's ranked analysis per measure × plan — ROI, CMS bonus, Stars impact, plain-English reasoning, confidence level.</td></tr>
+        <tr><td><code>campaign_evaluations</code></td><td>Evaluation agent</td><td>Post-campaign scoring — actual vs. expected closure rate, Stars impact actual vs. projected.</td></tr>
+        <tr><td><code>whatsapp_conversations</code></td><td>WhatsApp agent</td><td>Live conversation state machine — tracks each member's appointment booking journey.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Measures ────────────────────────────────────────────────────── -->
+<div class="section" id="measures">
+  <div class="section-label">Clinical Reference</div>
+  <h2>HEDIS / Stars Measures</h2>
+
+  <div class="data-table-wrap">
+    <table>
+      <thead><tr><th>Key</th><th>Code</th><th>Name</th><th>Star Weight</th><th>Domain</th></tr></thead>
+      <tbody>
+        <tr><td><code>M001</code></td><td>BCS</td><td>Breast Cancer Screening</td><td>1.0</td><td>Prevention &amp; Screening</td></tr>
+        <tr><td><code>M002</code></td><td>COL</td><td>Colorectal Cancer Screening</td><td>1.5</td><td>Prevention &amp; Screening</td></tr>
+        <tr><td><code>M003</code></td><td>EED</td><td>Eye Exam for Patients w/ Diabetes</td><td>2.0</td><td>Chronic Conditions</td></tr>
+        <tr><td><code>M004</code></td><td>CDC</td><td>Controlling Blood Pressure</td><td>2.0</td><td>Chronic Conditions</td></tr>
+        <tr><td><code>M005</code></td><td>MAD</td><td>Medication Adherence — Diabetes</td><td>3.0</td><td>Medication Adherence</td></tr>
+        <tr><td><code>M006</code></td><td>AFV</td><td>Annual Flu Vaccine</td><td>1.0</td><td>Prevention &amp; Screening</td></tr>
+        <tr><td><code>M007</code></td><td>SPC</td><td>Statin Therapy — Cardiovascular</td><td>2.0</td><td>Chronic Conditions</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>CMS Bonus Formula:</strong> Stars improvement × plan members × (monthly PMPM × 12) × 5%. A 0.1★ improvement on a 1,800-member plan at $1,180/month PMPM = <strong>$1.27M/year</strong> in additional CMS revenue. Per-campaign Stars cap = <code>star_weight × 0.15</code>; portfolio cap = 0.30★.
+  </div>
+</div>
+
+<!-- ── Features ───────────────────────────────────────────────────── -->
+<div class="section" id="features">
+  <div class="section-label">Dashboard</div>
+  <h2>Feature Map</h2>
+
+  <div class="feature-grid">
+    <div class="feat-card accent-teal">
+      <div class="fc-icon">📊</div>
+      <div class="fc-name">Financial Opportunity Analysis</div>
+      <div class="fc-desc">Per-card breakdown of every measure × plan combination: compliance rate vs. national benchmark, open gaps, estimated CMS bonus, projected Stars improvement, outreach cost, and ROI. Cards show all three outreach tiers (Tier-1 digital, Tier-2 call, Tier-3 field).</div>
+    </div>
+    <div class="feat-card accent-teal">
+      <div class="fc-icon">🎛️</div>
+      <div class="fc-name">Budget Optimizer</div>
+      <div class="fc-desc">Drag a budget slider to see which campaigns get funded first. Uses a greedy ROI-ranked allocation algorithm with per-plan Stars caps (0.30★ portfolio max). Shows projected CMS bonus vs. the theoretical maximum for your plan portfolio.</div>
+    </div>
+    <div class="feat-card accent-indigo">
+      <div class="fc-icon">🤖</div>
+      <div class="fc-name">AI Opportunity Analysis</div>
+      <div class="fc-desc">"Run AI Analysis" triggers Claude to scan all gaps, calculate financial impact, rank opportunities by ROI, and write plain-English reasoning for each. Results appear in a live progress panel with confidence level (HIGH/MEDIUM/LOW) and projected CMS bonus.</div>
+    </div>
+    <div class="feat-card accent-indigo">
+      <div class="fc-icon">🧭</div>
+      <div class="fc-name">4-Phase NBA Wizard</div>
+      <div class="fc-desc">Guided session: (1) pick an opportunity, (2) approve cohorts, (3) confirm campaign design, (4) generate outreach plan. Each phase shows an AI agent status, allows overrides, and requires explicit confirmation before proceeding. Each confirmation also silently triggers a background AI loop for richer DB writes.</div>
+    </div>
+    <div class="feat-card">
+      <div class="fc-icon">📂</div>
+      <div class="fc-name">Data Source Upload</div>
+      <div class="fc-desc">Drag-and-drop any CSV or SQLite .db file. The API auto-detects which table it maps to by reading column headers, replaces the existing data, then immediately kicks off Claude AI analysis on the new dataset. Results are surfaced in the upload modal itself.</div>
+    </div>
+    <div class="feat-card">
+      <div class="fc-icon">💬</div>
+      <div class="fc-name">WhatsApp Conversations</div>
+      <div class="fc-desc">Full two-way WhatsApp conversation state machine via Twilio. Outbound message → member replies → appointment booking → follow-up check → gap closure. NLP parses YES/NO/DATE replies. A simulator lets you test the flow without a real WhatsApp number.</div>
+    </div>
+    <div class="feat-card">
+      <div class="fc-icon">📧</div>
+      <div class="fc-name">Email Outreach</div>
+      <div class="fc-desc">AI-generated personalized email previews per member (via Claude), sent through SendGrid. Preview renders in the outreach panel before sending. Batch send-all supported for an entire NBA run.</div>
+    </div>
+    <div class="feat-card accent-amber">
+      <div class="fc-icon">🏆</div>
+      <div class="fc-name">Campaign Evaluation</div>
+      <div class="fc-desc">Post-campaign scoring: actual closure rate vs. expected, Stars impact actual vs. projected, performance status (EXCEEDING/ON_TRACK/BELOW). Evaluation schedule tracks 30/60/90-day windows. Member-level evaluation flags who needs a follow-up action.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Agents ──────────────────────────────────────────────────────── -->
+<div class="section" id="agents">
+  <div class="section-label">AI Engine</div>
+  <h2>The 4-Agent Loop</h2>
+  <p>Claude operates via a tool-use agentic loop (<code>while finish_reason == "tool_calls"</code>). It has access to 7 database tools and cycles through four distinct agent personas — each one a different system prompt that shapes Claude's reasoning for that phase.</p>
+
+  <div class="agent-flow">
+    <div class="agent-phase">
+      <div class="ap-num">Phase 1</div>
+      <div class="ap-name">Opportunity Selection</div>
+      <div class="ap-agent">Opportunity Agent</div>
+      <div class="ap-desc">Queries all measure × plan gaps. Calls <code>calculate_financial_impact</code> on the top 5 by star_weight × open_gaps. Ranks by ROI. Writes analysis rows.</div>
+      <div class="ap-writes">Writes → <code>claude_opportunity_analysis</code> · <code>fact_nba_trace</code></div>
+    </div>
+    <div class="agent-phase">
+      <div class="ap-num">Phase 2</div>
+      <div class="ap-name">Cohort Design</div>
+      <div class="ap-agent">Segmentation Agent</div>
+      <div class="ap-desc">Queries member-level data for the selected opportunity. Designs 2-4 cohorts by propensity, digital literacy, channel availability, language, and days open.</div>
+      <div class="ap-writes">Writes → <code>fact_nba_claude_decision</code> · <code>fact_nba_trace</code></div>
+    </div>
+    <div class="agent-phase">
+      <div class="ap-num">Phase 3</div>
+      <div class="ap-name">Campaign Design</div>
+      <div class="ap-agent">Campaign Agent</div>
+      <div class="ap-desc">Designs channel strategy (SMS/email/call), frequency plan (e.g., 2 SMS in 14 days → call day 21), and incentive tier ($0/$15/$25/$50). Respects DNC flags.</div>
+      <div class="ap-writes">Writes → <code>fact_nba_claude_decision</code> · <code>dim_nba_campaign</code></div>
+    </div>
+    <div class="agent-phase">
+      <div class="ap-num">Phase 4</div>
+      <div class="ap-name">Outreach Plan</div>
+      <div class="ap-agent">Outreach Agent</div>
+      <div class="ap-desc">Generates per-contact outreach schedule. Summarizes total contacts by channel and expected Stars lift. Writes final audit trace.</div>
+      <div class="ap-writes">Writes → <code>fact_nba_outreach_plan</code> · <code>fact_nba_trace</code></div>
+    </div>
+  </div>
+
+  <h3>The 7 Database Tools</h3>
+  <div class="data-table-wrap">
+    <table>
+      <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>query_opportunities</code></td><td>Returns all measure × plan combos with open gap counts, compliance rates, and plan metadata. Filterable by measure or plan.</td></tr>
+        <tr><td><code>query_members</code></td><td>Returns member-level demographics, channel preferences, propensity scores for a specific measure × plan. Used for segmentation.</td></tr>
+        <tr><td><code>calculate_financial_impact</code></td><td>Pure calculation — CMS bonus, Stars delta, ROI, outreach cost. Applies per-campaign cap (star_weight × 0.15) and portfolio cap (0.30★).</td></tr>
+        <tr><td><code>write_opportunity_analysis</code></td><td>Persists Claude's ranked analysis to <code>claude_opportunity_analysis</code> table.</td></tr>
+        <tr><td><code>write_session_decision</code></td><td>Writes or updates NBA decision rows for a cohort of members in <code>fact_nba_claude_decision</code>.</td></tr>
+        <tr><td><code>write_trace</code></td><td>Appends an audit trace row — agent name, step label, input/output summaries, affected member count.</td></tr>
+        <tr><td><code>get_historical_performance</code></td><td>Reads past campaign evaluations — actual vs. expected closure rates — so Claude can calibrate its recommendations against prior results.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── API ────────────────────────────────────────────────────────── -->
+<div class="section" id="api">
+  <div class="section-label">Backend</div>
+  <h2>API Endpoints</h2>
+  <p>The FastAPI backend exposes 50+ endpoints. Key ones by category:</p>
+
+  <h3>Data & Opportunities</h3>
+  <div class="ep-list">
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/opportunities</span><span class="ep-desc">All measure × plan combos with open gaps and composite scores</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/opportunities/financial</span><span class="ep-desc">Full financial analysis cards — compliance rate, CMS bonus, ROI per tier</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/gaps/{measure_key}/{plan_key}</span><span class="ep-desc">Member-level gap rows for a specific opportunity</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/members</span><span class="ep-desc">All members with demographics and channel preferences</span></div>
+    <div class="ep"><span class="ep-method put">PUT</span><span class="ep-path">/plans/{plan_key}/revenue</span><span class="ep-desc">Update PMPM and total_members for a plan (recalculates all financials)</span></div>
+  </div>
+
+  <h3>NBA Session</h3>
+  <div class="ep-list">
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/session/start</span><span class="ep-desc">Create a new NBA run — returns a <code>RUN_YYYYMMDD_HHMMSS</code> run ID</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/session/{run_id}/status</span><span class="ep-desc">Full status — decisions, campaign, outreach plan, trace, message previews</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/session/{run_id}/decision</span><span class="ep-desc">Write cohort decisions for a batch of members</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/session/{run_id}/campaign</span><span class="ep-desc">Write the approved campaign configuration</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/session/{run_id}/outreach</span><span class="ep-desc">Write planned outreach contacts</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/session/{run_id}/trace</span><span class="ep-desc">Append an audit trace row</span></div>
+  </div>
+
+  <h3>AI Agent Loop</h3>
+  <div class="ep-list">
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/analyze/{nba_run_id}</span><span class="ep-desc">Kick off background AI opportunity analysis (returns 202 immediately)</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/analyze/{nba_run_id}/status</span><span class="ep-desc">Poll analysis progress — queued / running / complete / error</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/analyze/latest</span><span class="ep-desc">Fetch most recent AI analysis results from DB</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/session/start-loop</span><span class="ep-desc">Trigger a background AI loop phase (cohort / campaign / outreach)</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/session/{run_id}/loop-status</span><span class="ep-desc">Poll a specific loop phase status by mode</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/session/{run_id}/confirm-phase</span><span class="ep-desc">Record plan manager confirmation and optionally chain the next phase</span></div>
+  </div>
+
+  <h3>Outreach & Messaging</h3>
+  <div class="ep-list">
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/preview/messages/{run_id}</span><span class="ep-desc">Generate AI-personalized message previews for all planned contacts</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/send/message/{contact_id}</span><span class="ep-desc">Send a single message via WhatsApp or email</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/send/all/{run_id}</span><span class="ep-desc">Batch send to all planned contacts for a run</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/webhook/whatsapp</span><span class="ep-desc">Twilio inbound webhook — handles member replies, updates conversation state</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/conversations/send-followups</span><span class="ep-desc">Send follow-up messages to conversations past their appointment date</span></div>
+  </div>
+
+  <h3>Data Source Upload</h3>
+  <div class="ep-list">
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/datasource/upload</span><span class="ep-desc">Upload CSV or SQLite files; auto-ingests and runs AI analysis</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/datasource/status/{run_id}</span><span class="ep-desc">Poll upload + analysis job status</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/datasource/tables</span><span class="ep-desc">Row counts for all core tables — confirms data is loaded</span></div>
+  </div>
+
+  <h3>Evaluation</h3>
+  <div class="ep-list">
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/evaluate/{run_id}</span><span class="ep-desc">Run post-campaign evaluation — actual vs. expected closure rates</span></div>
+    <div class="ep"><span class="ep-method get">GET</span><span class="ep-path">/evaluate/{run_id}/latest</span><span class="ep-desc">Fetch latest evaluation results for a run</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/evaluate/run-scheduled</span><span class="ep-desc">Run all evaluations due today (30/60/90-day windows)</span></div>
+    <div class="ep"><span class="ep-method post">POST</span><span class="ep-path">/outcome/{contact_id}</span><span class="ep-desc">Record actual gap closure outcome for a member</span></div>
+  </div>
+</div>
+
+<!-- ── Setup ──────────────────────────────────────────────────────── -->
+<div class="section" id="setup">
+  <div class="section-label">Getting Started</div>
+  <h2>Setup</h2>
+
+  <ol class="step-list">
+    <li><div class="step-num">1</div><div><strong>Clone and install dependencies</strong><pre><code>pip install fastapi uvicorn anthropic python-dotenv twilio sendgrid pyngrok</code></pre></div></li>
+    <li><div class="step-num">2</div><div><strong>Create your <code>.env</code> file</strong><pre><code>ANTHROPIC_API_KEY=sk-or-v1-your-openrouter-key
+TWILIO_ACCOUNT_SID=ACxxxxx
+TWILIO_AUTH_TOKEN=your_token
+TWILIO_PHONE_NUMBER=whatsapp:+1415xxxxxxx
+SENDGRID_API_KEY=SG.xxxxx
+SENDGRID_SENDER_EMAIL=you@yourdomain.com
+TEST_SMS_NUMBER=+1your_number
+TEST_EMAIL=you@yourdomain.com</code></pre>
+    Only <code>ANTHROPIC_API_KEY</code> is required for AI analysis. All others enable real messaging.
+    </div></li>
+    <li><div class="step-num">3</div><div><strong>Seed the database</strong><pre><code>python setup_database.py
+python generate_synthetic_data.py</code></pre></div></li>
+    <li><div class="step-num">4</div><div><strong>Start the API backend</strong><pre><code>uvicorn api:app --host 0.0.0.0 --port 8000 --reload</code></pre></div></li>
+    <li><div class="step-num">5</div><div><strong>Start the dashboard server</strong> (in a second terminal)<pre><code>cd dashboard
+python -m http.server 8080</code></pre></div></li>
+    <li><div class="step-num">6</div><div><strong>Open the dashboard</strong><br><code>http://localhost:8080</code> — you should see the Opportunities tab loading data from the API.</div></li>
+  </ol>
+</div>
+
+<!-- ── Flow ───────────────────────────────────────────────────────── -->
+<div class="section" id="flow">
+  <div class="section-label">How to Use It</div>
+  <h2>Demo Flow — What to Walk a Stakeholder Through</h2>
+
+  <h3>Step 1 — Review opportunities</h3>
+  <p>Open the Opportunities tab. You'll see financial analysis cards for every measure × plan combination. Each card shows: current compliance rate vs. the national benchmark, number of open gaps, projected CMS bonus if all gaps close, and outreach cost by tier. The Budget Optimizer slider lets you see exactly which campaigns get funded at a given spend level.</p>
+
+  <h3>Step 2 — Run AI analysis</h3>
+  <p>Click <strong>Run AI Analysis</strong> in the purple panel. Claude will scan all 35 measure × plan combinations, calculate financial impact on the top 5, and surface its ranked recommendations with ROI rationale in about 30–60 seconds. Results persist to the database so they survive a page refresh.</p>
+
+  <h3>Step 3 — Connect your own data (optional)</h3>
+  <p>Click <strong>Connect Data Source</strong> in the teal banner. Drop in your own <code>fact_member_gap.csv</code> (and optionally your dimension files). The system auto-detects the table, ingests the data, and immediately re-runs the AI analysis on it. No schema changes needed — just match the column names.</p>
+
+  <h3>Step 4 — Run a session</h3>
+  <p>Switch to the <strong>Run Session</strong> tab. Either click <em>Select This Opportunity</em> from an opportunity card, or choose one from the dropdown. The wizard walks through 4 phases. At each phase, an AI agent status panel shows what's happening in the background, and you confirm before proceeding. You can tweak channels, incentives, and cadence at Phase 3 (Campaign Design) before confirming.</p>
+
+  <h3>Step 5 — Preview and send</h3>
+  <p>At Phase 4 (Outreach Plan), click <strong>Preview Messages</strong> to see Claude-generated, personalized outreach text for each member. Then click <strong>Send All</strong> to dispatch via WhatsApp or email. A real Twilio webhook handles replies.</p>
+
+  <h3>Step 6 — Track outcomes</h3>
+  <p>The <strong>Evaluation</strong> tab shows post-campaign performance — actual vs. expected closure rates, Stars impact, and which members still need follow-up. The <code>POST /evaluate/run-scheduled</code> endpoint can be called on a cron to auto-score at 30/60/90-day windows.</p>
+
+  <div class="callout indigo">
+    <div class="co-title">For a new product manager on day one</div>
+    The fastest path to a live demo: run <code>setup_database.py</code> + <code>generate_synthetic_data.py</code>, start both servers, open the dashboard, click "Run AI Analysis". Within 60 seconds you'll have Claude's ranked opportunity analysis with real reasoning. No Twilio or SendGrid keys needed for this path.
+  </div>
+</div>
+
+<!-- ── Upload Guide ────────────────────────────────────────────────── -->
+<div class="section" id="upload">
+  <div class="section-label">Bring Your Own Data</div>
+  <h2>Uploading External Data</h2>
+
+  <p>The "Connect Data Source" modal in the Opportunities tab accepts any combination of CSV files or a single SQLite <code>.db</code> file. The system handles the mapping automatically.</p>
+
+  <h3>CSV upload rules</h3>
+  <ul style="color:var(--muted);font-size:.82rem;margin:.5rem 0 1rem 1.25rem;line-height:1.8">
+    <li>UTF-8 encoding (BOM is handled automatically)</li>
+    <li>Column names must match the key columns listed in the Input Files table above — order doesn't matter</li>
+    <li>Extra columns are accepted and ignored</li>
+    <li>Uploading a file <strong>replaces</strong> the existing table entirely — it's not an append</li>
+    <li>You can upload multiple files at once; each is auto-detected independently</li>
+  </ul>
+
+  <h3>SQLite <code>.db</code> upload rules</h3>
+  <ul style="color:var(--muted);font-size:.82rem;margin:.5rem 0 1rem 1.25rem;line-height:1.8">
+    <li>Table names must match exactly: <code>fact_member_gap</code>, <code>dim_member</code>, etc.</li>
+    <li>Only the five core tables are copied — other tables in your DB are ignored</li>
+    <li>Column names within each table still need to match the schema</li>
+  </ul>
+
+  <h3>What happens after upload</h3>
+  <p>The API ingests the files, then automatically calls <code>run_opportunity_analysis()</code> — Claude scans the new data, calculates financial impact, and ranks opportunities. The modal shows the top 3 results inline. Clicking "View Updated Opportunities" refreshes the full dashboard with your data.</p>
+</div>
+
+<!-- ── Status ─────────────────────────────────────────────────────── -->
+<div class="section" id="status">
+  <div class="section-label">Current State</div>
+  <h2>What's Built vs. What's Next</h2>
+
+  <div class="progress-wrap">
+    <div class="progress-label"><span>Overall completeness</span><span>~30%</span></div>
+    <div class="progress-track"><div class="progress-fill" style="width:30%"></div></div>
+  </div>
+
+  <p>The core loop works end-to-end: data in → AI analysis → campaign design → outreach → evaluation. But the platform is still in early demo stage. Here's an honest assessment:</p>
+</div>
+
+<!-- ── Roadmap ────────────────────────────────────────────────────── -->
+<div class="section" id="roadmap">
+  <div class="section-label">Roadmap</div>
+  <h2>Path to 75–80% Completion</h2>
+
+  <div class="roadmap">
+    <div class="rm-item"><span class="rm-status done">Done</span><div class="rm-desc"><strong>Financial opportunity analysis cards</strong> CMS bonus, Stars forecast, budget optimizer — all using PMPM formula with proper caps</div></div>
+    <div class="rm-item"><span class="rm-status done">Done</span><div class="rm-desc"><strong>4-phase NBA wizard (guided UI)</strong> Opportunity → Cohort → Campaign → Outreach with explicit plan manager confirmation at each step</div></div>
+    <div class="rm-item"><span class="rm-status done">Done</span><div class="rm-desc"><strong>Claude AI agentic loop</strong> Real tool-use loop via OpenRouter — query, calculate, rank, write. Persists reasoning to DB.</div></div>
+    <div class="rm-item"><span class="rm-status done">Done</span><div class="rm-desc"><strong>Data source upload</strong> CSV/SQLite drag-and-drop → auto-detect → ingest → immediate AI re-analysis</div></div>
+    <div class="rm-item"><span class="rm-status done">Done</span><div class="rm-desc"><strong>WhatsApp conversation state machine</strong> Outbound → reply parsing → appointment booking → follow-up → gap closure</div></div>
+    <div class="rm-item"><span class="rm-status done">Done</span><div class="rm-desc"><strong>Campaign evaluation</strong> Actual vs. expected closure rates, 30/60/90-day evaluation windows, member-level follow-up flags</div></div>
+
+    <div class="rm-item"><span class="rm-status next">Next</span><div class="rm-desc"><strong>Member portal (web or SMS)</strong> Members self-schedule appointments, receive reminders, confirm completion — closes the loop without manual outreach team</div></div>
+    <div class="rm-item"><span class="rm-status next">Next</span><div class="rm-desc"><strong>AI session loop surfaced in UI</strong> Show Claude's real-time reasoning in the wizard phases (not just background fire-and-forget) — per-agent thinking visible to the plan manager</div></div>
+    <div class="rm-item"><span class="rm-status next">Next</span><div class="rm-desc"><strong>Automated evaluation scheduling</strong> Cron-triggered evaluation runs at 30/60/90-day marks; results fed back to AI to adjust next campaign's incentive strategy</div></div>
+    <div class="rm-item"><span class="rm-status next">Next</span><div class="rm-desc"><strong>Snowflake / Databricks connector</strong> Replace file upload with direct SQL query against the customer's enterprise data warehouse — no CSV export needed</div></div>
+    <div class="rm-item"><span class="rm-status next">Next</span><div class="rm-desc"><strong>Multi-tenant auth</strong> Login with plan-manager accounts; each user sees only their assigned plan contracts. Row-level security in the DB.</div></div>
+
+    <div class="rm-item"><span class="rm-status wip">Improve</span><div class="rm-desc"><strong>Better synthetic data generator</strong> Current 5-plan × 7-measure seed is functional but thin. Need realistic propensity score distributions, seasonal patterns, and multi-year measurement history for convincing demos.</div></div>
+    <div class="rm-item"><span class="rm-status wip">Improve</span><div class="rm-desc"><strong>AI reasoning depth</strong> The agent loop currently analyzes the top 5 opportunities. Needs richer prompting: use historical closure rates to calibrate expected lift, flag members with <code>do_not_contact=true</code> before recommending call outreach, explain trade-offs between incentive tiers.</div></div>
+    <div class="rm-item"><span class="rm-status wip">Improve</span><div class="rm-desc"><strong>Evaluation → feedback loop</strong> Post-campaign evaluation results should feed back into the AI prompt for the next run. "Last time we ran BCS in P001 with SMS + $15 incentive, actual closure was 42% vs. 60% expected — adjust recommendation accordingly."</div></div>
+    <div class="rm-item"><span class="rm-status wip">Improve</span><div class="rm-desc"><strong>Stars Forecast reliability</strong> The forecast chart uses compliant/eligible counts from the current data snapshot. Needs to account for measurement-year timing, new eligibles joining mid-year, and partial-year adjustments per CMS methodology.</div></div>
+
+    <div class="rm-item"><span class="rm-status later">Later</span><div class="rm-desc"><strong>Production deployment</strong> Docker compose, managed Postgres (replace SQLite), environment-specific configs, CI/CD pipeline, health checks</div></div>
+    <div class="rm-item"><span class="rm-status later">Later</span><div class="rm-desc"><strong>Reporting &amp; export</strong> One-click PDF/Excel export of the opportunity analysis, campaign plan, and evaluation results — formatted for a QIC or Stars Committee meeting</div></div>
+    <div class="rm-item"><span class="rm-status later">Later</span><div class="rm-desc"><strong>Predictive gap closure model</strong> Train a proper propensity model on historical outcome data rather than the synthetic <code>nba_propensity_score</code> currently seeded in the CSV</div></div>
+    <div class="rm-item"><span class="rm-status later">Later</span><div class="rm-desc"><strong>Provider-facing tools</strong> Notify PCPs when their patients have open gaps; let providers confirm gap closure directly, bypassing the member outreach loop</div></div>
+  </div>
+
+  <div class="callout amber">
+    <div class="co-title">Getting to 75–80%</div>
+    The three highest-leverage items are: (1) surfacing Claude's real-time reasoning in the wizard UI so it feels like genuine AI collaboration rather than background magic, (2) the Snowflake connector so real customers don't need to export CSVs, and (3) the evaluation-to-AI feedback loop so the system gets measurably smarter with each campaign.
+  </div>
+</div>
+
+<!-- ── File Map ────────────────────────────────────────────────────── -->
+<div class="section">
+  <div class="section-label">Project Structure</div>
+  <h2>File Map</h2>
+  <pre><code>NBA_Claude_Cli/
+├── api.py                      # FastAPI backend — 50+ endpoints
+├── agent_loop.py               # Claude AI agentic loop — 7 tools, 4 phases
+├── setup_database.py           # Creates all DB tables
+├── generate_synthetic_data.py  # Seeds 5 plans × 7 measures × members
+├── careintel.db                # SQLite database (WAL mode)
+├── .env                        # Secrets — API keys, phone numbers (not in git)
+├── input/
+│   ├── fact_member_gap.csv     # Core gap fact table (read-only)
+│   ├── dim_member.csv
+│   ├── dim_member_channel_pref.csv
+│   ├── dim_measure.csv
+│   └── dim_member_channel_pref.csv
+├── output/
+│   ├── fact_nba_claude_decision.csv
+│   ├── dim_nba_campaign.csv
+│   ├── fact_nba_outreach_plan.csv
+│   └── fact_nba_trace.csv
+└── dashboard/
+    └── index.html              # Full dashboard — Vanilla JS, no build step</code></pre>
+</div>
+
+</div><!-- /content -->
+</main>
+</div><!-- /shell -->
+
+<script>
+// Highlight active nav link on scroll
+const sections = document.querySelectorAll('.section, .hero');
+const links = document.querySelectorAll('.sidenav a');
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const id = e.target.id;
+      if (id) {
+        const a = document.querySelector(`.sidenav a[href="#${id}"]`);
+        if (a) a.classList.add('active');
+      }
+    }
+  });
+}, { threshold: 0.3 });
+sections.forEach(s => obs.observe(s));
+
+// Default to dark theme
+if (!document.documentElement.getAttribute('data-theme')) {
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+}
+</script>

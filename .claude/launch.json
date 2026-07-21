@@ -2,10 +2,11 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dashboard",
+      "name": "CareIntel Dashboard",
       "runtimeExecutable": "python",
       "runtimeArgs": ["server.py", "8080"],
-      "port": 8080
+      "port": 8080,
+      "autoPort": false
     }
   ]
 }

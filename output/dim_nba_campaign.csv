@@ -1,3 +1,2 @@
 campaign_id,nba_run_id,measure_key,plan_key,campaign_name,target_cohort_ids,channel_strategy,frequency_plan,message_template_id,incentive_strategy,created_timestamp
-CMP-EED-DIGITAL,RUN_PHASE1_20260512_104500,M003,P003,EED Digital Nudge,C1_DIGITAL_HIGH_PROP,"Email primary, SMS reminder","Email day 1 -> SMS day 7 -> stop on close",TMPL_EED_DIGITAL_EN_V1,NONE,2026-05-12T10:50:00Z
-CMP-EED-OUTREACH,RUN_PHASE1_20260512_104500,M003,P003,EED Bilingual Outreach,C2_LANG_BARRIER_LOW_LIT,"Bilingual live call primary, Spanish SMS backup","Call day 1 -> Spanish SMS day 5 -> Call day 14 -> stop on close",TMPL_EED_OUTREACH_ES_V1,TRANSPORT_VOUCHER,2026-05-12T10:50:00Z
+CMP_20260624_234042_01,RUN_20260624_234042,M003,P005,Lean Digital + Targeted High-Touch,C1_DIGITAL_HIGH_PROP,C1:Email+SMS; C2:Call (preferred channel),C1:2/14d; C2:1/10d,TMPL_EED_PLAIN_V1,C1:$15 Gift Card; C2:$25 Gift Card,2026-06-24T23:40:44

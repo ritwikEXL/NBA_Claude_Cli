@@ -1037,7 +1037,7 @@ async function handleDatasourceFiles(fileList){
           html+=`<div style="font-size:.78rem;font-weight:600;color:#a5b4fc;margin-bottom:.4rem">AI Top Opportunities from your data:</div>`;
           tops.forEach((o,i)=>{
             html+=`<div style="background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:7px;padding:.55rem .9rem;margin-bottom:.35rem">
-              <div style="font-weight:600;font-size:.82rem">#${i+1} ${o.measure_key} × ${o.plan_key} — ROI ${(o.roi_ratio||0).toFixed(1)}× | CMS Bonus $${((o.cms_bonus_impact||0)/1000).toFixed(0)}K</div>
+              <div style="font-weight:600;font-size:.82rem">#${i+1} ${o.measure_key} × ${o.plan_key} — Every $1 generates ~$${Math.round(o.roi_ratio||0).toLocaleString()} in CMS bonus | CMS Bonus $${((o.cms_bonus_impact||0)/1000).toFixed(0)}K</div>
               <div style="font-size:.75rem;color:var(--g300);margin-top:.2rem">${(o.claude_reasoning||'').substring(0,120)}</div>
             </div>`;
           });
@@ -1104,7 +1104,7 @@ async function runAiAnalysis(){
             </div>
             <!-- summary metrics row -->
             <div style="display:flex;gap:1.25rem;margin-top:.6rem;flex-wrap:wrap">
-              <div><span style="font-size:.7rem;color:var(--g500)">ROI </span><strong style="font-size:.88rem;color:var(--g200)">${(o.roi_ratio||0).toFixed(1)}×</strong></div>
+              <div><span style="font-size:.7rem;color:var(--g500)">Est. Return </span><strong style="font-size:.88rem;color:var(--g200)">$${Math.round(o.roi_ratio||0).toLocaleString()} per $1</strong></div>
               <div><span style="font-size:.7rem;color:var(--g500)">CMS Bonus (this measure × plan) </span><strong style="font-size:.88rem;color:#34d399">$${((o.cms_bonus_impact||0)/1000).toFixed(0)}K</strong></div>
               <div><span style="font-size:.7rem;color:var(--g500)">Expected Closures </span><strong style="font-size:.88rem;color:var(--g200)">${Math.round(o.expected_closures||0)} members</strong></div>
               <div><span style="font-size:.7rem;color:var(--g500)">Priority Score </span><strong style="font-size:.88rem;color:#a5b4fc">${(o.priority_score||0).toFixed(1)}</strong></div>

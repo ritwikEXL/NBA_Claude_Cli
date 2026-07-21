@@ -1,5 +1,8 @@
 measure_key,measure_code,measure_name,measure_type,star_weight,hedis_domain,age_gender_eligibility,clinical_description,nba_default_playbook
-M001,BCS,Breast Cancer Screening,Process,1,Effectiveness of Care - Prevention and Screening,Women aged 50-74,Percentage of women 50-74 who had a mammogram to screen for breast cancer in the past 2 years,PB_BCS_STANDARD
-M002,COL,Colorectal Cancer Screening,Process,1.5,Effectiveness of Care - Prevention and Screening,Adults aged 45-75,Percentage of adults 45-75 who had appropriate screening for colorectal cancer (colonoscopy, FIT, FIT-DNA, etc.),PB_COL_STANDARD
-M003,EED,Eye Exam for Patients with Diabetes,Process,2,Effectiveness of Care - Diabetes Care,Adults 18-75 with diabetes,Percentage of diabetic members 18-75 who had a retinal or dilated eye exam by an eye care professional during the measurement year,PB_EED_STANDARD
-M004,CDC,Controlling Blood Pressure,Process,2,Effectiveness of Care - Chronic Conditions,Adults 18-85 with hypertension,Percentage of members 18-85 with hypertension whose blood pressure was adequately controlled during the measurement year,PB_CDC_STANDARD
+M001,BCS,Breast Cancer Screening,Process,1,Effectiveness of Care - Prevention and Screening,Women aged 50-74,Mammogram screening in past 2 years,PB_BCS_STANDARD
+M002,COL,Colorectal Cancer Screening,Process,1.5,Effectiveness of Care - Prevention and Screening,Adults aged 45-75,Colorectal cancer screening,PB_COL_STANDARD
+M003,EED,Eye Exam for Patients with Diabetes,Process,2,Effectiveness of Care - Diabetes Care,Adults 18-75 with diabetes,Retinal exam for diabetic members,PB_EED_STANDARD
+M004,CDC,Controlling Blood Pressure,Process,2,Effectiveness of Care - Chronic Conditions,Adults 18-85 with hypertension,Blood pressure control,PB_CDC_STANDARD
+M005,MAD,Medication Adherence for Diabetes,Process,3,Effectiveness of Care - Medication Use,Adults with diabetes on medication,Medication adherence for diabetes,PB_MAD_STANDARD
+M006,AFV,Annual Flu Vaccine,Process,1,Effectiveness of Care - Prevention and Screening,Adults 18+,Annual flu vaccine,PB_AFV_STANDARD
+M007,SPC,Statin Use in Persons with Cardiovascular Disease,Process,2,Effectiveness of Care - Medication Use,Adults with cardiovascular disease,Statin use for CVD,PB_SPC_STANDARD
