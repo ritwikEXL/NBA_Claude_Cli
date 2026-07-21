@@ -13,9 +13,18 @@ from datetime import datetime
 
 load_dotenv()
 
+_OPENROUTER_KEY = (
+    os.getenv('ANTHROPIC_API_KEY') or
+    os.getenv('OPENROUTER_API_KEY') or
+    os.getenv('OPENAI_API_KEY') or
+    ''
+)
+if not _OPENROUTER_KEY:
+    logging.warning("[financial] No API key found. Set ANTHROPIC_API_KEY in Render environment variables.")
+
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv('ANTHROPIC_API_KEY'),
+    api_key=_OPENROUTER_KEY or 'missing-key',
     default_headers={
         "HTTP-Referer": "https://careintel.exl.com",
         "X-Title": "CareIntel Financial Analysis"
