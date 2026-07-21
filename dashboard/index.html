@@ -651,7 +651,7 @@ async function loadData(){
     S.apiConnected=true;S.loading=false;S.error=null;
   }catch(e){
     S.loading=false;
-    S.error='Cannot reach API at '+API+'. Make sure uvicorn is running on port 8000.';
+    S.error='Cannot reach API. Please wait a moment and refresh — the server may be starting up.';
     S.apiConnected=false;
   }
   renderApiStatus();render();
@@ -2376,9 +2376,11 @@ function renderOpp(){
           <span style="font-weight:700;font-size:.92rem;color:var(--g900)">${o.measure_name}</span>
           <span class="badge badge-gray" style="font-size:.68rem">${o.measure_code}</span>
           <span style="font-size:.72rem;font-weight:600;color:${swColor}">${swLabel} (${o.star_weight}★)</span>
+          ${o.ai_analysis?`<span style="background:#EDE9FE;color:#7C3AED;padding:.1rem .4rem;border-radius:4px;font-size:.65rem;font-weight:600">🤖 AI Analysis · ${new Date(o.ai_timestamp).toLocaleDateString()}</span>`:''}
         </div>
         <div style="font-size:.78rem;color:var(--g400)">Net return <strong style="color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12net)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this measure only, realistic estimate, T1+T2 tiers)</span></div>
       </div>
+      ${o.plain_english_summary?`<div style="padding:.75rem 1.3rem;background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-bottom:1px solid #DDD6FE;font-size:.82rem;color:#4C1D95;line-height:1.55"><strong style="color:#7C3AED">AI Analysis:</strong> ${o.plain_english_summary}</div>`:''}
       <div class="opp-top-grid">
         <div class="opp-top-col">
           <div style="font-size:.72rem;font-weight:700;color:var(--g500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Situation</div>
@@ -2406,7 +2408,8 @@ function renderOpp(){
               <span style="font-size:.76rem;font-weight:700;color:#F15A22">Likely to Act <span style="font-size:.67rem;font-weight:400">(digital outreach only)</span></span>
               <span style="font-size:.72rem;font-weight:600">${t1m} members</span>
             </div>
-            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">High propensity · digital literacy · just need a reminder</div>
+            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">${o.tier1_definition||'High propensity · digital literacy · just need a reminder'}</div>
+            ${o.tier1_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier1_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t1cpm}/member · $${o.tier1_cost.toLocaleString()} total</strong></span>
               <span>Expected: <strong style="color:#F15A22">~${t1exp} completions</strong> at ${Math.round(t1r*100)}%</span>
@@ -2417,7 +2420,8 @@ function renderOpp(){
               <span style="font-size:.76rem;font-weight:700;color:#92400E">Probably Will Act <span style="font-size:.67rem;font-weight:400">(SMS + incentive)</span></span>
               <span style="font-size:.72rem;font-weight:600">${t2m} members</span>
             </div>
-            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">Reachable but need motivation · gift card incentive</div>
+            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">${o.tier2_definition||'Reachable but need motivation · gift card incentive'}</div>
+            ${o.tier2_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier2_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t2cpm}/member · $${o.tier2_cost.toLocaleString()} total</strong></span>
               <span>Expected: <strong style="color:#D97706">~${t2exp} completions</strong> at ${Math.round(t2r*100)}%</span>
@@ -2428,7 +2432,8 @@ function renderOpp(){
               <span style="font-size:.76rem;font-weight:700;color:#5B21B6">Need High Touch <span style="font-size:.67rem;font-weight:400">(call + voucher)</span></span>
               <span style="font-size:.72rem;font-weight:600">${t3m} members</span>
             </div>
-            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">Language barriers, access issues, low digital literacy</div>
+            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">${o.tier3_definition||'Language barriers, access issues, low digital literacy'}</div>
+            ${o.tier3_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier3_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t3cpm}/member · $${o.tier3_cost.toLocaleString()} total</strong></span>
               <span>Expected: <strong style="color:#7C3AED">~${t3exp} completions</strong> at ${Math.round(t3r*100)}%</span>
@@ -2501,6 +2506,18 @@ function renderOpp(){
           <div style="flex:1"></div>
         </div>
       </div>
+      ${(o.stars_improvement_rationale||o.key_risks||o.key_opportunities||o.recommended_approach)?`
+      <details style="margin:.25rem 1.3rem .75rem;border:1px solid var(--g100);border-radius:6px;overflow:hidden">
+        <summary style="padding:.55rem .85rem;font-size:.76rem;font-weight:600;color:var(--g600);cursor:pointer;background:var(--g50);list-style:none;display:flex;align-items:center;gap:.4rem">
+          <span>🤖</span> View Full AI Reasoning
+        </summary>
+        <div style="padding:.75rem 1rem;font-size:.75rem;color:var(--g700);line-height:1.6;display:flex;flex-direction:column;gap:.65rem">
+          ${o.stars_improvement_rationale?`<div><strong style="color:var(--g900)">Stars Improvement Rationale:</strong><br>${o.stars_improvement_rationale}</div>`:''}
+          ${o.key_risks?(()=>{let r=o.key_risks;try{r=JSON.parse(r);}catch(e){}return Array.isArray(r)?`<div><strong style="color:var(--g900)">Key Risks:</strong><ul style="margin:.3rem 0 0 1.2rem;padding:0">${r.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:(r?`<div><strong style="color:var(--g900)">Key Risks:</strong><br>${r}</div>`:'')})():''}
+          ${o.key_opportunities?(()=>{let op=o.key_opportunities;try{op=JSON.parse(op);}catch(e){}return Array.isArray(op)?`<div><strong style="color:var(--g900)">Key Opportunities:</strong><ul style="margin:.3rem 0 0 1.2rem;padding:0">${op.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:(op?`<div><strong style="color:var(--g900)">Key Opportunities:</strong><br>${op}</div>`:'')})():''}
+          ${o.recommended_approach?`<div><strong style="color:var(--g900)">Recommended Approach:</strong><br>${o.recommended_approach}</div>`:''}
+        </div>
+      </details>`:''}
       <button class="launch-btn" onclick="launchCampaign('${o.measure_key}','${sel.key}')">
         Launch This Campaign — ${o.measure_name} → ${sel.name.replace('Aurora ','')} &nbsp;→
       </button>

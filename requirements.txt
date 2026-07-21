@@ -6,3 +6,4 @@ twilio==9.10.9
 anthropic==0.115.1
 httpx==0.28.1
 pyngrok==8.1.2
+openai>=1.0.0

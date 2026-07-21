@@ -435,6 +435,19 @@ def get_opportunities_financial():
             HAVING open_gaps > 0
         """).fetchall()
 
+    # Load any Claude-generated analyses into a lookup dict
+    ai_analyses = {}
+    try:
+        with get_db() as conn2:
+            fa_rows = conn2.execute("SELECT * FROM financial_analyses").fetchall()
+            for fa in fa_rows:
+                key = (fa['measure_key'], fa['plan_key'])
+                existing = ai_analyses.get(key)
+                if not existing or fa['created_timestamp'] > existing['created_timestamp']:
+                    ai_analyses[key] = dict(fa)
+    except Exception:
+        pass
+
     results = []
     for r in rows:
         d    = dict(r)
@@ -614,10 +627,147 @@ def get_opportunities_financial():
             # Plan-level summary
             "plan_open_gaps": plan_summary.get(pk, {}).get("plan_open_gaps", open_gaps_db),
             "plan_members_at_risk": plan_summary.get(pk, {}).get("plan_members_at_risk", round(open_population)),
+            # AI analysis fields — populated below if fresh Claude analysis exists
+            "tier1_definition": "",
+            "tier1_closure_rationale": "",
+            "tier2_definition": "",
+            "tier2_closure_rationale": "",
+            "tier3_definition": "",
+            "tier3_closure_rationale": "",
+            "stars_improvement_rationale": "",
+            "return_per_dollar": 0,
+            "plain_english_summary": "",
+            "key_risks": "",
+            "key_opportunities": "",
+            "recommended_approach": "",
+            "ai_analysis": False,
+            "ai_model": "",
+            "ai_timestamp": "",
         })
+
+        # Merge Claude-generated analysis if fresh (< 24h)
+        fa = ai_analyses.get((mk, pk))
+        if fa:
+            try:
+                age_h = (datetime.now() - datetime.fromisoformat(fa['created_timestamp'])).total_seconds() / 3600
+                if age_h < 24:
+                    result = results[-1]
+                    result['tier1_count'] = fa.get('tier_1_count') or result['tier1_count']
+                    result['tier1_closure_rate'] = fa.get('tier_1_closure_rate') or result['tier1_closure_rate']
+                    result['tier1_definition'] = fa.get('tier_1_definition', '')
+                    result['tier1_closure_rationale'] = fa.get('tier_1_closure_rationale', '')
+                    result['tier2_count'] = fa.get('tier_2_count') or result['tier2_count']
+                    result['tier2_closure_rate'] = fa.get('tier_2_closure_rate') or result['tier2_closure_rate']
+                    result['tier2_definition'] = fa.get('tier_2_definition', '')
+                    result['tier2_closure_rationale'] = fa.get('tier_2_closure_rationale', '')
+                    result['tier3_count'] = fa.get('tier_3_count') or result['tier3_count']
+                    result['tier3_definition'] = fa.get('tier_3_definition', '')
+                    result['tier3_closure_rationale'] = fa.get('tier_3_closure_rationale', '')
+                    result['stars_improvement'] = fa.get('stars_improvement') or result['stars_improvement']
+                    result['stars_improvement_rationale'] = fa.get('stars_improvement_rationale', '')
+                    result['cms_bonus'] = int(fa.get('cms_bonus_impact') or result['cms_bonus'])
+                    result['total_outreach_cost'] = int(fa.get('total_outreach_cost') or result['total_outreach_cost'])
+                    result['net_return'] = int(fa.get('net_return') or result['net_return'])
+                    result['return_per_dollar'] = fa.get('return_per_dollar') or result.get('roi_ratio', 0)
+                    result['confidence'] = fa.get('confidence_level') or result['confidence']
+                    result['confidence_description'] = fa.get('confidence_rationale') or result['confidence_description']
+                    result['plain_english_summary'] = fa.get('plain_english_summary', '')
+                    result['key_risks'] = fa.get('key_risks', '')
+                    result['key_opportunities'] = fa.get('key_opportunities', '')
+                    result['recommended_approach'] = fa.get('recommended_approach', '')
+                    result['ai_analysis'] = True
+                    result['ai_model'] = fa.get('claude_model_used', '')
+                    result['ai_timestamp'] = fa.get('created_timestamp', '')
+            except Exception as e:
+                logging.warning(f"[financial] Could not merge AI analysis: {e}")
 
     results.sort(key=lambda x: x["roi_ratio"], reverse=True)
     return results
+
+
+# ── AI Financial Analysis job tracker ────────────────────────────────────────
+_analysis_jobs = {}  # job_id -> {"status": "running"/"complete"/"error", "results": [...]}
+
+
+# ── POST /financial/analyze/{measure_key}/{plan_key} ──────────────────────────
+
+@app.post("/financial/analyze/{measure_key}/{plan_key}")
+def trigger_analysis(measure_key: str, plan_key: str, force: bool = False):
+    with get_db() as conn:
+        try:
+            row = conn.execute(
+                "SELECT * FROM financial_analyses WHERE measure_key=? AND plan_key=? ORDER BY created_timestamp DESC LIMIT 1",
+                (measure_key, plan_key)
+            ).fetchone()
+        except Exception:
+            row = None
+
+    if row and not force:
+        age_hours = (datetime.now() - datetime.fromisoformat(row['created_timestamp'])).total_seconds() / 3600
+        if age_hours < 24:
+            return {"cached": True, "analysis": dict(row)}
+
+    from financial_analysis_loop import analyze_opportunity
+    result = analyze_opportunity(measure_key, plan_key)
+    return {"cached": False, "analysis": result}
+
+
+# ── POST /financial/analyze-all ───────────────────────────────────────────────
+
+@app.post("/financial/analyze-all")
+def trigger_analyze_all(source_id: str = "demo"):
+    import uuid
+    job_id = str(uuid.uuid4())[:8]
+    _analysis_jobs[job_id] = {"status": "running", "results": [], "total": 0, "done": 0}
+
+    def run():
+        from financial_analysis_loop import analyze_all_opportunities
+        results = analyze_all_opportunities(source_id)
+        _analysis_jobs[job_id]["results"] = results
+        _analysis_jobs[job_id]["status"] = "complete"
+        _analysis_jobs[job_id]["done"] = len(results)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return {"job_id": job_id, "status": "running"}
+
+
+# ── GET /financial/analyze-all/status ────────────────────────────────────────
+
+@app.get("/financial/analyze-all/status")
+def analyze_all_status():
+    return _analysis_jobs
+
+
+# ── GET /financial/analysis/{measure_key}/{plan_key} ─────────────────────────
+
+@app.get("/financial/analysis/{measure_key}/{plan_key}")
+def get_analysis(measure_key: str, plan_key: str):
+    with get_db() as conn:
+        try:
+            row = conn.execute(
+                "SELECT * FROM financial_analyses WHERE measure_key=? AND plan_key=? ORDER BY created_timestamp DESC LIMIT 1",
+                (measure_key, plan_key)
+            ).fetchone()
+        except Exception:
+            row = None
+    if not row:
+        raise HTTPException(status_code=404, detail="No analysis found")
+    return dict(row)
+
+
+# ── GET /financial/analyses ───────────────────────────────────────────────────
+
+@app.get("/financial/analyses")
+def get_all_analyses():
+    with get_db() as conn:
+        try:
+            rows = conn.execute(
+                "SELECT * FROM financial_analyses ORDER BY net_return DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
 
 
 # ── GET /data/status ──────────────────────────────────────────────────────────
@@ -773,6 +923,16 @@ def get_template_plans():
     )
 
 
+# ── Background financial analysis helper ──────────────────────────────────────
+
+def _run_analysis_bg(source_id):
+    try:
+        from financial_analysis_loop import analyze_all_opportunities
+        analyze_all_opportunities(source_id)
+    except Exception as e:
+        logging.error(f"[financial] Background analysis error: {e}")
+
+
 # ── POST /data/upload/members ─────────────────────────────────────────────────
 
 REQUIRED_MEMBER_COLS = {
@@ -838,6 +998,7 @@ async def upload_members(file: UploadFile = File(...)):
             channel_rows
         )
 
+    threading.Thread(target=_run_analysis_bg, args=('demo',), daemon=True).start()
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
@@ -906,6 +1067,7 @@ async def upload_gaps(file: UploadFile = File(...)):
             gap_rows
         )
 
+    threading.Thread(target=_run_analysis_bg, args=('demo',), daemon=True).start()
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
@@ -970,6 +1132,7 @@ async def upload_plans(file: UploadFile = File(...)):
             [(pk, m, r, today_str) for pk, m, r in pop_rows]
         )
 
+    threading.Thread(target=_run_analysis_bg, args=('demo',), daemon=True).start()
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
