@@ -624,18 +624,43 @@ function renderApiStatus(){
 
 /* ── AI Analysis Trigger ───────────────────────────────────────────── */
 async function runAiAnalysis(measureKey, planKey){
-  const btn=event.target;
-  btn.disabled=true;btn.textContent='Analyzing…';
+  const btn=event&&event.target;
+  if(btn){btn.disabled=true;btn.textContent='🤖 Analyzing...';}
   try{
-    const r=await fetch(`${API}/financial/analyze/${measureKey}/${planKey}`,{method:'POST'});
-    if(!r.ok)throw new Error(r.status);
-    // Reload financial data so card updates with AI analysis
-    const fin=await apiGet('/opportunities/financial');
-    S.financialData=fin;
-    render();
+    const kickResp=await fetch(`${API}/financial/analyze/${measureKey}/${planKey}`,{method:'POST'});
+    if(!kickResp.ok)throw new Error(kickResp.status);
+    const kick=await kickResp.json();
+    if(kick.status==='cached'){
+      const fin=await apiGet('/opportunities/financial');
+      S.oppFinancial=fin;render();
+      if(btn){btn.disabled=false;btn.textContent='🤖 Re-run Analysis';}
+      return;
+    }
+    // Poll job status every 3s
+    const jobId=kick.job_id;
+    let dots=0;
+    const interval=setInterval(async()=>{
+      dots=(dots%3)+1;
+      if(btn)btn.textContent='🤖 Analyzing'+'.'.repeat(dots);
+      try{
+        const st=await apiGet('/financial/analyze-all/status');
+        const job=st[jobId];
+        if(job&&job.status==='complete'){
+          clearInterval(interval);
+          const fin=await apiGet('/opportunities/financial');
+          S.oppFinancial=fin;render();
+          if(btn){btn.disabled=false;btn.textContent='🤖 Re-run Analysis';}
+        }else if(job&&job.status==='error'){
+          clearInterval(interval);
+          if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
+          alert('Analysis error: '+(job.error||'unknown'));
+        }
+      }catch(e){}
+    },3000);
+    setTimeout(()=>{clearInterval(interval);if(btn&&btn.disabled){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}},180000);
   }catch(e){
-    btn.disabled=false;btn.textContent='🤖 Run AI Analysis';
-    alert('Analysis failed — check server logs.');
+    if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
+    alert('Could not start analysis: '+e.message);
   }
 }
 
