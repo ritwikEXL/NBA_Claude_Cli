@@ -623,9 +623,13 @@ CRITICAL RULES:
 - Explain your reasoning for every number you produce — rationale fields must be specific not generic.
 - Return realistic numbers. A plan with mostly low-literacy elderly Spanish-speaking members will have
   different closure rates than a plan with young digitally-engaged members even for the same measure.
-- Stars improvement formula: (expected_closures / eligible_population) x star_weight x 0.5
-  Cap at star_weight x 0.10 per campaign.
-- CMS bonus: stars_improvement x plan_revenue x 0.05
+- CRITICAL — eligible_population for Stars: use plan_population.total_members × eligibility_rate
+  for the measure. Eligibility rates: BCS=28%, COL=42%, EED=12%, CDC=32%, MAD=12%, AFV=75%, SPC=18%.
+  Do NOT use the count of members with gaps in the database as the eligible_population.
+  Example: if plan has 18,000 members and measure is MAD (12%), eligible_population = 18,000 × 0.12 = 2,160.
+- Stars improvement formula: (expected_closures / eligible_population) × star_weight × 0.5
+  Cap at star_weight × 0.10 per campaign.
+- CMS bonus: stars_improvement × plan_revenue × 0.05
 - Cost per member must reflect actual channel costs:
   Email: $1.50, SMS: $0.50 + incentive cost, Call: $8.00 + incentive cost.
   Incentive costs: GIFTCARD_15=$15, GIFTCARD_25=$25, TRANSPORT_VOUCHER=$20, FIT_KIT_MAILER=$8.

@@ -663,6 +663,15 @@ def get_opportunities_financial():
                     result['tier3_count'] = fa.get('tier_3_count') or result['tier3_count']
                     result['tier3_definition'] = fa.get('tier_3_definition', '')
                     result['tier3_closure_rationale'] = fa.get('tier_3_closure_rationale', '')
+                    # Merge AI-computed closures so display is consistent with AI tier counts
+                    if fa.get('tier_1_expected_closures'):
+                        result['tier1_closures'] = fa['tier_1_expected_closures']
+                    if fa.get('tier_2_expected_closures'):
+                        result['tier2_closures'] = fa['tier_2_expected_closures']
+                    if fa.get('tier_3_expected_closures'):
+                        result['tier3_closures'] = fa['tier_3_expected_closures']
+                    if fa.get('expected_total_closures'):
+                        result['total_expected_closures'] = fa['expected_total_closures']
                     result['stars_improvement'] = fa.get('stars_improvement') or result['stars_improvement']
                     result['stars_improvement_rationale'] = fa.get('stars_improvement_rationale', '')
                     result['cms_bonus'] = int(fa.get('cms_bonus_impact') or result['cms_bonus'])
@@ -693,6 +702,7 @@ _analysis_jobs = {}  # job_id -> {"status": "running"/"complete"/"error", "resul
 
 @app.post("/financial/analyze/{measure_key}/{plan_key}")
 def trigger_analysis(measure_key: str, plan_key: str, force: bool = False):
+    # Check cache first — return immediately if fresh result exists
     with get_db() as conn:
         try:
             row = conn.execute(
@@ -705,11 +715,26 @@ def trigger_analysis(measure_key: str, plan_key: str, force: bool = False):
     if row and not force:
         age_hours = (datetime.now() - datetime.fromisoformat(row['created_timestamp'])).total_seconds() / 3600
         if age_hours < 24:
-            return {"cached": True, "analysis": dict(row)}
+            return {"status": "cached", "analysis": dict(row)}
 
-    from financial_analysis_loop import analyze_opportunity
-    result = analyze_opportunity(measure_key, plan_key)
-    return {"cached": False, "analysis": result}
+    # Run async — return job_id immediately so the request doesn't time out
+    import uuid
+    job_id = f"single_{measure_key}_{plan_key}_{str(uuid.uuid4())[:6]}"
+    _analysis_jobs[job_id] = {"status": "running", "measure_key": measure_key, "plan_key": plan_key}
+
+    def run():
+        try:
+            from financial_analysis_loop import analyze_opportunity
+            result = analyze_opportunity(measure_key, plan_key)
+            _analysis_jobs[job_id]["status"] = "complete"
+            _analysis_jobs[job_id]["analysis"] = result
+        except Exception as e:
+            logging.error(f"[financial] Single analysis error: {e}")
+            _analysis_jobs[job_id]["status"] = "error"
+            _analysis_jobs[job_id]["error"] = str(e)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"status": "running", "job_id": job_id}
 
 
 # ── POST /financial/analyze-all ───────────────────────────────────────────────
