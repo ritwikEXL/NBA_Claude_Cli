@@ -106,6 +106,8 @@ def _ensure_tables():
 
 _ensure_tables()
 
+active_source_id = "demo"
+
 # Safe schema migrations — ignore errors if column already exists
 with get_db() as _mc:
     try:
@@ -121,6 +123,44 @@ with get_db() as _mc:
             _mc.execute(_col)
         except Exception:
             pass
+    # Data sources table and source_id columns
+    for _col in [
+        "ALTER TABLE fact_member_gap ADD COLUMN source_id TEXT DEFAULT 'demo'",
+        "ALTER TABLE dim_member ADD COLUMN source_id TEXT DEFAULT 'demo'",
+        "ALTER TABLE dim_plan_contract ADD COLUMN source_id TEXT DEFAULT 'demo'",
+    ]:
+        try:
+            _mc.execute(_col)
+        except Exception:
+            pass
+    try:
+        _mc.execute("""
+        CREATE TABLE IF NOT EXISTS data_sources (
+            source_id TEXT PRIMARY KEY,
+            source_name TEXT,
+            source_type TEXT,
+            file_name TEXT,
+            uploaded_at TEXT,
+            member_count INTEGER,
+            gap_count INTEGER,
+            plan_count INTEGER,
+            is_active INTEGER DEFAULT 0,
+            created_timestamp TEXT
+        )""")
+    except Exception:
+        pass
+    _mc.execute("""
+        INSERT OR IGNORE INTO data_sources VALUES (
+            'demo','CareIntel Demo Database','sqlite','careintel.db',
+            datetime('now'),250,0,5,1,datetime('now')
+        )""")
+    try:
+        _mc.execute("""
+            UPDATE data_sources SET gap_count = (SELECT COUNT(*) FROM fact_member_gap WHERE source_id = 'demo' OR source_id IS NULL)
+            WHERE source_id = 'demo'
+        """)
+    except Exception:
+        pass
 
 # New lookup tables — create if missing, seed if empty
 _TODAY = "2026-07-09"
@@ -481,6 +521,18 @@ def get_opportunities_financial():
         if roi_ratio > 100:
             notes.append("Verify with full plan data")
 
+        # ── Confidence level ─────────────────────────────────────────────
+        hist_has_data = hist_n >= 5
+        if d.get("eligible_members", 0) >= 500 and hist_has_data:
+            confidence = "HIGH"
+            confidence_description = f"High confidence — {round(denominator):,} eligible members with historical response data"
+        elif d.get("eligible_members", 0) < 50:
+            confidence = "LOW"
+            confidence_description = f"Low confidence — {round(denominator):,} eligible members. Projections may not be statistically reliable."
+        else:
+            confidence = "MEDIUM"
+            confidence_description = f"Medium confidence — {round(denominator):,} eligible members (industry benchmark rates applied)"
+
         results.append({
             "measure_key": mk,
             "measure_code": mc, "measure_name": d["measure_name"],
@@ -523,6 +575,8 @@ def get_opportunities_financial():
             "roi_ratio": roi_ratio,
             "roi_ratio_raw": roi_ratio_raw,
             "notes": notes,
+            "confidence": confidence,
+            "confidence_description": confidence_description,
             # Plan-level summary
             "plan_open_gaps": plan_summary.get(pk, {}).get("plan_open_gaps", open_gaps_db),
             "plan_members_at_risk": plan_summary.get(pk, {}).get("plan_members_at_risk", round(open_population)),
@@ -549,6 +603,85 @@ def get_data_status():
         "gaps":    {"count": gaps_count,    "source": "demo", "updated": today_str},
         "plans":   {"count": plans_count,   "source": "demo", "updated": today_str},
         "runs":    {"count": runs_count},
+    }
+
+
+# ── GET /data/sources ─────────────────────────────────────────────────────────
+
+@app.get("/data/sources")
+def get_data_sources():
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM data_sources ORDER BY is_active DESC, created_timestamp DESC").fetchall()
+    return rows_as_dicts(rows)
+
+
+# ── POST /data/sources/activate/{source_id} ───────────────────────────────────
+
+@app.post("/data/sources/activate/{source_id}")
+def activate_source(source_id: str):
+    global active_source_id
+    with get_db() as conn:
+        conn.execute("UPDATE data_sources SET is_active = 0")
+        conn.execute("UPDATE data_sources SET is_active = 1 WHERE source_id = ?", (source_id,))
+    active_source_id = source_id
+    return {"status": "ok", "active_source_id": source_id}
+
+
+# ── DELETE /data/sources/{source_id} ─────────────────────────────────────────
+
+@app.delete("/data/sources/{source_id}")
+def delete_source(source_id: str):
+    global active_source_id
+    if source_id == "demo":
+        raise HTTPException(status_code=400, detail="Cannot delete demo source")
+    with get_db() as conn:
+        conn.execute("DELETE FROM fact_member_gap WHERE source_id = ?", (source_id,))
+        conn.execute("DELETE FROM dim_member WHERE source_id = ?", (source_id,))
+        conn.execute("DELETE FROM dim_plan_contract WHERE source_id = ?", (source_id,))
+        conn.execute("DELETE FROM data_sources WHERE source_id = ?", (source_id,))
+    if active_source_id == source_id:
+        active_source_id = "demo"
+        with get_db() as conn:
+            conn.execute("UPDATE data_sources SET is_active = 1 WHERE source_id = 'demo'")
+    return {"status": "ok"}
+
+
+# ── GET /data/sources/{source_id}/summary ────────────────────────────────────
+
+@app.get("/data/sources/{source_id}/summary")
+def get_source_summary(source_id: str):
+    with get_db() as conn:
+        member_count = conn.execute(
+            "SELECT COUNT(*) FROM dim_member WHERE source_id = ? OR (source_id IS NULL AND ? = 'demo')",
+            (source_id, source_id)
+        ).fetchone()[0]
+        gap_count = conn.execute(
+            "SELECT COUNT(*) FROM fact_member_gap WHERE source_id = ? OR (source_id IS NULL AND ? = 'demo')",
+            (source_id, source_id)
+        ).fetchone()[0]
+        plan_count = conn.execute(
+            "SELECT COUNT(*) FROM dim_plan_contract WHERE source_id = ? OR (source_id IS NULL AND ? = 'demo')",
+            (source_id, source_id)
+        ).fetchone()[0]
+        open_gap_count = conn.execute(
+            "SELECT COUNT(*) FROM fact_member_gap WHERE (source_id = ? OR (source_id IS NULL AND ? = 'demo')) AND LOWER(gap_status) IN ('open','borderline')",
+            (source_id, source_id)
+        ).fetchone()[0]
+        top_measures = conn.execute("""
+            SELECT g.measure_key, m.measure_code, m.measure_name, COUNT(*) AS open_gaps
+            FROM fact_member_gap g
+            LEFT JOIN dim_measure m ON m.measure_key = g.measure_key
+            WHERE (g.source_id = ? OR (g.source_id IS NULL AND ? = 'demo'))
+              AND LOWER(g.gap_status) IN ('open','borderline')
+            GROUP BY g.measure_key
+            ORDER BY open_gaps DESC LIMIT 3
+        """, (source_id, source_id)).fetchall()
+    return {
+        "member_count": member_count,
+        "gap_count": gap_count,
+        "plan_count": plan_count,
+        "open_gap_count": open_gap_count,
+        "top_measures": rows_as_dicts(top_measures),
     }
 
 

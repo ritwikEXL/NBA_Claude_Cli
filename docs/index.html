@@ -503,6 +503,7 @@ tr:hover td{background:var(--g50)}
       <span>Medicare Stars · Next Best Action</span>
     </div>
   </div>
+  <div id="nav-source-indicator" style="font-size:.7rem;color:rgba(255,255,255,.65);background:rgba(255,255,255,.12);border-radius:4px;padding:.15rem .5rem;margin-left:.3rem">● Demo Data</div>
   <div class="nav-sep"></div>
   <div class="nav-tabs">
     <button class="nav-tab active" data-action="switch-tab" data-val="opp">Opportunities</button>
@@ -2363,10 +2364,10 @@ function renderOpp(){
     // Max CMS bonus if ALL gaps on this measure closed (capped at 2% plan revenue, adjusted for upside)
     const maxCmsBonus=Math.round(_capB(o.cms_bonus_all*upside,planRev));
     const maxCmsBonusTheo=_fmtN(maxCmsBonus);
-    const conf=o.open_population>=20&&compPct>=30?'HIGH':o.open_population>=10?'MEDIUM':'LOW';
-    const confClass={'HIGH':'conf-high','MEDIUM':'conf-med','LOW':'conf-low'}[conf];
-    const confIcon={'HIGH':'✓','MEDIUM':'~','LOW':'⚠'}[conf];
-    const confDesc={'HIGH':'More than 20 eligible members · plan compliance above 30%','MEDIUM':'10–20 eligible members · using industry benchmarks','LOW':'Fewer than 10 eligible members — verify with full claims data'}[conf];
+    const conf=o.confidence||( o.open_population>=20&&compPct>=30?'HIGH':o.open_population>=10?'MEDIUM':'LOW' );
+    const confClass={'HIGH':'conf-high','MEDIUM':'conf-med','LOW':'conf-low'}[conf]||'conf-med';
+    const confIcon={'HIGH':'✓','MEDIUM':'~','LOW':'⚠'}[conf]||'~';
+    const confDesc=o.confidence_description||({'HIGH':'More than 20 eligible members · plan compliance above 30%','MEDIUM':'10–20 eligible members · using industry benchmarks','LOW':'Fewer than 10 eligible members — verify with full claims data'}[conf]||'');
     const swLabel=o.star_weight>=3?'Highest Weight':o.star_weight>=2?'High Weight':o.star_weight>=1.5?'Medium Weight':'Standard Weight';
     const swColor=o.star_weight>=3?'var(--red)':o.star_weight>=2?'var(--amber)':o.star_weight>=1.5?'var(--blue)':'var(--g400)';
     return`<div class="opp-top-card">
@@ -2444,7 +2445,40 @@ function renderOpp(){
               <div><span style="color:var(--g500)">CMS bonus gained</span><br><strong style="color:#16a34a">${_fmtN(t12bonus)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this plan, this measure, projected)</span></div>
               <div><span style="color:var(--g500)">Net return</span><br><strong style="color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12net)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this measure only)</span></div>
             </div>
-            ${t12cost>0&&t12roi>0?`<div style="background:#16a34a;color:#fff;border-radius:6px;padding:.4rem .7rem;font-size:.8rem;font-weight:700;text-align:center">$${t12roi} return per $1 spent <span style="font-size:.67rem;opacity:.8;font-weight:400">(estimated, based on industry-average response rates)</span></div>`:''}
+            ${t12cost>0?`
+<div style="background:#fff;border:1px solid #A7D9C8;border-radius:6px;padding:.65rem .8rem;margin-top:.3rem">
+  <div style="font-size:.8rem;font-weight:700;color:#15803D;margin-bottom:.5rem">
+    💰 Every $1 invested could generate $${(o.roi_ratio>10?Math.round(o.roi_ratio):o.roi_ratio.toFixed(1)).toLocaleString()} in CMS bonus value
+  </div>
+  <div style="font-size:.74rem;color:var(--g600);line-height:1.7">
+    <div>📋 <strong>Campaign Cost:</strong> $${t12cost.toLocaleString()} <span style="color:var(--g400)">(contacting ${t12m} highest-priority members)</span></div>
+    <div>⭐ <strong>Expected Stars Impact:</strong> +${t12stars.toFixed(3)}★ <span style="color:var(--g400)">(across ${(o.eligible_members||o.denominator||0).toLocaleString()} total eligible members)</span></div>
+    <div>🏛 <strong>CMS Bonus Value:</strong> ${_fmtN(t12bonus)} <span style="color:var(--g400)">(if Stars improvement sustained through measurement year)</span></div>
+    <div>📈 <strong>Net Campaign Return:</strong> <strong style="color:${t12net>=0?'#15803D':'var(--red)'}">${_fmtN(t12net)}</strong> estimated</div>
+  </div>
+  <div style="margin-top:.6rem">
+    <div style="font-size:.67rem;color:var(--g400);margin-bottom:.25rem">Cost vs Bonus (to scale)</div>
+    <div style="display:flex;flex-direction:column;gap:.2rem">
+      <div style="display:flex;align-items:center;gap:.4rem">
+        <div style="width:60px;font-size:.67rem;color:var(--g500);text-align:right">Cost</div>
+        <div style="flex:1;height:10px;background:var(--g100);border-radius:3px;position:relative">
+          <div style="height:100%;width:${Math.max(2,Math.min(100,t12cost/(Math.max(t12bonus,t12cost))*100))}%;background:var(--amber);border-radius:3px"></div>
+        </div>
+        <div style="font-size:.67rem;color:var(--amber);width:55px">$${t12cost.toLocaleString()}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:.4rem">
+        <div style="width:60px;font-size:.67rem;color:var(--g500);text-align:right">Bonus</div>
+        <div style="flex:1;height:10px;background:var(--g100);border-radius:3px;position:relative">
+          <div style="height:100%;width:${Math.max(2,Math.min(100,t12bonus/(Math.max(t12bonus,t12cost))*100))}%;background:#15803D;border-radius:3px"></div>
+        </div>
+        <div style="font-size:.67rem;color:#15803D;width:55px">${_fmtN(t12bonus)}</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div style="font-size:.67rem;color:var(--g400);line-height:1.45;margin-top:.4rem;padding:.4rem .5rem;background:var(--g50);border-radius:4px">
+  CMS bonus calculations assume Stars improvement is maintained through measurement year end. Actual bonus depends on performance across all measures. Projections based on estimated plan population — connect your data source for plan-specific figures.
+</div>`:''}
           </div>
         </div>
         <div class="opp-top-col" style="display:flex;flex-direction:column;gap:.75rem">
@@ -3186,6 +3220,7 @@ loadData().then(loadLatestSession);
 // State for Data Sources tab
 const DS = {
   status: null,
+  sources: [],
   modalOpen: false,
   step: 1,        // 1=type, 2=template, 3=file, 4=preview, 5=import
   dataType: 'members',
@@ -3197,6 +3232,9 @@ const DS = {
   resetting: false,
 };
 
+let activeSourceId = 'demo';
+let activeSourceName = 'CareIntel Demo Database';
+
 const DS_TYPES = {
   members: { label: 'Member Roster',       endpoint: '/data/upload/members', tpl: '/data/templates/members' },
   gaps:    { label: 'Care Gap File',        endpoint: '/data/upload/gaps',    tpl: '/data/templates/gaps'    },
@@ -3205,22 +3243,118 @@ const DS_TYPES = {
 
 async function loadDataStatus() {
   try {
-    const res = await fetch(`${API_BASE}/data/status`);
+    const res = await fetch(`${API}/data/status`);
     if (res.ok) DS.status = await res.json();
   } catch(e) { /* ignore */ }
+}
+
+async function loadSources() {
+  try {
+    const res = await fetch(`${API}/data/sources`);
+    if (res.ok) DS.sources = await res.json();
+  } catch(e) { DS.sources = []; }
 }
 
 async function renderDataSources() {
   const el = document.getElementById('view-data');
   if (!el) return;
   if (!DS.status) await loadDataStatus();
+  if (!DS.sources.length) await loadSources();
   const s = DS.status || {};
+
+  // find active source
+  const activeSrc = DS.sources.find(s2=>s2.is_active) || {source_name:'CareIntel Demo Database',source_type:'sqlite',member_count:250,gap_count:s.gaps?.count||0,plan_count:5};
+
+  // Update nav indicator
+  const ind = document.getElementById('nav-source-indicator');
+  if (ind) ind.textContent = `● ${activeSrc.source_name.replace('CareIntel ','').replace(' Database','')}`;
 
   el.innerHTML = `
   <div style="max-width:1000px">
-    <!-- Section A: Current Data Status -->
+
+    <!-- Active Source Banner -->
+    <div style="background:linear-gradient(135deg,#DCFCE7,#F0FDF4);border:1.5px solid #86EFAC;border-radius:10px;padding:.75rem 1.1rem;margin-bottom:1.2rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+      <div style="display:flex;align-items:center;gap:.6rem">
+        <span style="color:#15803D;font-size:1.1rem">●</span>
+        <span style="font-size:.88rem;font-weight:700;color:#15803D">Currently analyzing: ${activeSrc.source_name}</span>
+      </div>
+      <span style="font-size:.78rem;color:#166534">${(activeSrc.member_count||0).toLocaleString()} members · ${(activeSrc.gap_count||0).toLocaleString()}+ gaps · ${(activeSrc.plan_count||5)} plans</span>
+    </div>
+
+    <!-- Source Switcher -->
     <div class="ds-section">
-      <div class="section-head"><h2 class="ds-section-title">Current Data Status</h2></div>
+      <div class="ds-section-title">Your Data Sources</div>
+      <div class="ds-section-sub">Switch between demo and uploaded data sources.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.75rem;margin-top:.75rem">
+        ${(DS.sources.length ? DS.sources : [activeSrc]).map(src=>`
+        <div style="border:${src.is_active?'2px solid #86EFAC':'1px solid var(--g200)'};border-radius:var(--r);padding:.85rem 1rem;background:${src.is_active?'#F0FDF4':'var(--white)'};position:relative">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+            <span style="font-size:.84rem;font-weight:700;color:var(--g900)">${src.source_name}</span>
+            <span style="font-size:.66rem;font-weight:600;padding:.15rem .45rem;border-radius:3px;background:${src.is_active?'#DCFCE7':'var(--g100)'};color:${src.is_active?'#15803D':'var(--g500)'}">${src.is_active?'● Active':'Inactive'}</span>
+          </div>
+          <div style="font-size:.74rem;color:var(--g500);margin-bottom:.5rem">${src.source_type||'sqlite'} · ${(src.member_count||0).toLocaleString()} members · ${(src.gap_count||0).toLocaleString()} gaps</div>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+            ${!src.is_active?`<button class="ds-btn" style="font-size:.72rem;padding:.25rem .6rem" onclick="dsActivateSource('${src.source_id}','${src.source_name}')">Activate</button>`:''}
+            ${src.source_id!=='demo'?`<button style="font-size:.72rem;padding:.25rem .6rem;background:var(--red-l);color:var(--red);border:1px solid #FECACA;border-radius:4px;cursor:pointer" onclick="dsDeleteSource('${src.source_id}')">🗑 Delete</button>`:''}
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Add New Source -->
+    <div class="ds-section">
+      <div class="ds-section-title">Connect a New Data Source</div>
+      <div class="ds-section-sub">Upload your own member, gap, or plan data to run accurate NBA opportunity analysis.</div>
+
+      <!-- Drag-drop zone -->
+      <div id="drop-zone" class="ds-drop-zone" style="margin-top:.85rem"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="dsHandleDropMain(event)"
+        onclick="document.getElementById('file-input-main').click()">
+        <div class="ds-drop-icon">📂</div>
+        <p style="font-size:.85rem;color:var(--g600);margin:.25rem 0">Drag &amp; drop your CSV file here</p>
+        <p style="font-size:.76rem;color:var(--g400)">or <span style="color:var(--teal);cursor:pointer;text-decoration:underline">browse files</span></p>
+        <input type="file" id="file-input-main" accept=".csv" style="display:none" onchange="dsHandleFileMain(this.files[0])">
+        <p style="font-size:.7rem;color:var(--g300);margin-top:.4rem">Accepts: .csv · Max 50MB</p>
+      </div>
+
+      ${DS.file?`<div class="ds-file-chosen" style="margin-top:.5rem">✔ ${DS.file.name} (${(DS.file.size/1024).toFixed(1)} KB) — <span style="color:var(--g500)">ready to upload</span></div>`:''}
+
+      <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
+        <button class="ds-btn" onclick="DS.dataType='members';dsOpenModal()">Upload Members</button>
+        <button class="ds-btn" onclick="DS.dataType='gaps';dsOpenModal()">Upload Gaps</button>
+        <button class="ds-btn" onclick="DS.dataType='plans';dsOpenModal()">Upload Plans</button>
+      </div>
+    </div>
+
+    <!-- Template Downloads -->
+    <div class="ds-section">
+      <div class="ds-section-title">Download Data Templates</div>
+      <div class="ds-section-sub">Download the correct column format before uploading your data.</div>
+      <div class="ds-tpl-row" style="margin-top:.65rem">
+        <button class="ds-btn-outline" onclick="dsDownloadTemplate('members')">↓ Member Template</button>
+        <button class="ds-btn-outline" onclick="dsDownloadTemplate('gaps')">↓ Gap Template</button>
+        <button class="ds-btn-outline" onclick="dsDownloadTemplate('plans')">↓ Plan Template</button>
+      </div>
+    </div>
+
+    <!-- Coming Soon Connectors -->
+    <div class="ds-section">
+      <div class="ds-section-title" style="color:var(--g400)">More Connectors — Coming Soon</div>
+      <div style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.65rem">
+        ${['Snowflake','Databricks','SQL Server','BigQuery','Azure Synapse','Redshift'].map(name=>`
+        <div style="border:1px solid var(--g200);border-radius:var(--r);padding:.6rem .9rem;background:var(--white);display:flex;align-items:center;gap:.5rem">
+          <span style="font-size:.78rem;font-weight:600;color:var(--g500)">${name}</span>
+          <span style="font-size:.65rem;padding:.1rem .4rem;background:var(--g100);color:var(--g400);border-radius:3px">Coming Soon</span>
+          <button style="font-size:.67rem;padding:.1rem .4rem;background:none;border:1px solid var(--g200);border-radius:3px;color:var(--g400);cursor:pointer" onclick="dsNotifyMe('${name}')">Notify me</button>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Current Data Status -->
+    <div class="ds-section">
+      <div class="ds-section-title">Current Data Status</div>
       <div class="ds-status-table">
         <table>
           <thead><tr><th>Data Source</th><th>Records</th><th>Status</th><th>Last Updated</th></tr></thead>
@@ -3232,63 +3366,11 @@ async function renderDataSources() {
           </tbody>
         </table>
       </div>
-      <div class="ds-banner">
-        <span class="ds-banner-icon">⚠</span>
-        <span>Using synthetic demo data — connect your real data source for accurate opportunity projections</span>
-      </div>
-      <button class="ds-btn-danger" onclick="dsResetData()" id="ds-reset-btn">
-        ${DS.resetting ? '<span class="ds-spinner"></span>Restoring…' : '↺ Reset to Demo Data'}
-      </button>
-    </div>
-
-    <!-- Section B: Connect Your Data -->
-    <div class="ds-section">
-      <div class="ds-section-title">Connect Your Data</div>
-      <div class="ds-section-sub">Upload your own member, gap, or plan data to run accurate NBA opportunity analysis.</div>
-      <div class="ds-cards">
-        <div class="ds-card active-card">
-          <div class="ds-card-icon">📂</div>
-          <div class="ds-card-name">CSV Upload</div>
-          <div class="ds-card-desc">Upload CSV files for member roster, care gaps, or plan configuration. Templates provided.</div>
-          <div class="ds-card-actions">
-            <button class="ds-btn" onclick="dsOpenModal()">Upload Files</button>
-          </div>
-        </div>
-        <div class="ds-card">
-          <div class="ds-card-icon">❄️</div>
-          <div class="ds-card-name">Snowflake</div>
-          <div class="ds-card-desc">Connect directly to your Snowflake data warehouse for live member and gap data.</div>
-          <div class="ds-card-actions"><span class="ds-coming-soon">Coming Soon</span></div>
-        </div>
-        <div class="ds-card">
-          <div class="ds-card-icon">⚡</div>
-          <div class="ds-card-name">Databricks</div>
-          <div class="ds-card-desc">Pull from Databricks Unity Catalog for large-scale HEDIS gap analytics.</div>
-          <div class="ds-card-actions"><span class="ds-coming-soon">Coming Soon</span></div>
-        </div>
-        <div class="ds-card">
-          <div class="ds-card-icon">🗄️</div>
-          <div class="ds-card-name">SQL Server</div>
-          <div class="ds-card-desc">Connect to on-premise or Azure SQL Server member management databases.</div>
-          <div class="ds-card-actions"><span class="ds-coming-soon">Coming Soon</span></div>
-        </div>
-        <div class="ds-card">
-          <div class="ds-card-icon">☁️</div>
-          <div class="ds-card-name">BigQuery</div>
-          <div class="ds-card-desc">Integrate with Google BigQuery for cloud-based Medicare claims and clinical data.</div>
-          <div class="ds-card-actions"><span class="ds-coming-soon">Coming Soon</span></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Section D: Template Downloads -->
-    <div class="ds-section">
-      <div class="ds-section-title">Download Data Templates</div>
-      <div class="ds-section-sub">Download the correct column format before uploading your data.</div>
-      <div class="ds-tpl-row">
-        <a href="${API_BASE}/data/templates/members" download="member_template.csv"><button class="ds-btn-outline">⬇ Member Roster Template</button></a>
-        <a href="${API_BASE}/data/templates/gaps" download="gaps_template.csv"><button class="ds-btn-outline">⬇ Care Gap File Template</button></a>
-        <a href="${API_BASE}/data/templates/plans" download="plans_template.csv"><button class="ds-btn-outline">⬇ Plan Configuration Template</button></a>
+      <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+        <button class="ds-btn-danger" onclick="dsResetData()" id="ds-reset-btn">
+          ${DS.resetting ? '<span class="ds-spinner"></span>Restoring…' : '↺ Reset to Demo Data'}
+        </button>
+        <span style="font-size:.74rem;color:var(--g400)">Restores all synthetic demo data</span>
       </div>
     </div>
   </div>
@@ -3304,6 +3386,57 @@ async function renderDataSources() {
     </div>
   </div>
   `;
+}
+
+async function dsActivateSource(sourceId, sourceName) {
+  try {
+    await fetch(`${API}/data/sources/activate/${sourceId}`, {method:'POST'});
+    activeSourceId = sourceId;
+    activeSourceName = sourceName;
+    await loadSources();
+    await loadDataStatus();
+    renderDataSources();
+    loadData(); // refresh opportunities
+  } catch(e) { alert('Failed to activate source: ' + e); }
+}
+
+async function dsDeleteSource(sourceId) {
+  if (!confirm('Delete this data source? This cannot be undone.')) return;
+  try {
+    await fetch(`${API}/data/sources/${sourceId}`, {method:'DELETE'});
+    await loadSources();
+    renderDataSources();
+  } catch(e) { alert('Failed to delete: ' + e); }
+}
+
+async function dsDownloadTemplate(type) {
+  const url = `${API}/data/templates/${type}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${type}_template.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function dsNotifyMe(name) {
+  const toast = document.createElement('div');
+  toast.textContent = `✓ We'll notify you when ${name} connector is ready`;
+  toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1F2937;color:#fff;padding:.6rem 1rem;border-radius:6px;font-size:.8rem;z-index:9999;animation:fadeIn .2s';
+  document.body.appendChild(toast);
+  setTimeout(()=>toast.remove(), 3000);
+}
+
+function dsHandleDropMain(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone')?.classList.remove('dragover');
+  const file = e.dataTransfer?.files?.[0];
+  if (file) dsHandleFileMain(file);
+}
+
+function dsHandleFileMain(file) {
+  DS.file = file;
+  renderDataSources();
 }
 
 function dsRenderModalBody() {
@@ -3333,11 +3466,10 @@ function dsRenderModalBody() {
       <button class="ds-btn" onclick="DS.step=2;dsRenderModal()">Next →</button>
     </div>`;
   } else if (step === 2) {
-    const tpl = DS_TYPES[DS.dataType];
     body = `<div class="ds-step-label">Step 2 — Download the template for your data type</div>
     <div class="ds-step-body">
       <p style="font-size:.82rem;color:var(--g600);margin-bottom:.75rem">Download the template, fill it in with your data, then come back to upload it.</p>
-      <a href="${API_BASE}${tpl.tpl}" download><button class="ds-btn">⬇ Download ${DS_TYPES[DS.dataType].label} Template</button></a>
+      <button class="ds-btn" onclick="dsDownloadTemplate('${DS.dataType}')">⬇ Download ${DS_TYPES[DS.dataType].label} Template</button>
     </div>
     <div style="display:flex;justify-content:space-between;gap:.5rem">
       <button class="ds-btn-outline" onclick="DS.step=1;dsRenderModal()">← Back</button>
@@ -3409,7 +3541,6 @@ function dsRenderModal() {
       <button class="ds-modal-close" onclick="dsCloseModal()">✕</button>
     </div>
     ${dsRenderModalBody()}`;
-  // Bind drop zone click
   const dz = document.getElementById('ds-drop-zone');
   if (dz) dz.onclick = () => document.getElementById('ds-file-input')?.click();
 }
@@ -3418,7 +3549,6 @@ function dsOpenModal() {
   DS.modalOpen = true; DS.step = 1; DS.file = null;
   DS.parsedRows = []; DS.parsedHeaders = []; DS.importResult = null;
   renderDataSources();
-  // bind drop zone click after render
   setTimeout(()=>{
     const dz=document.getElementById('ds-drop-zone');
     if(dz) dz.onclick=()=>document.getElementById('ds-file-input')?.click();
@@ -3466,7 +3596,6 @@ function dsParseAndPreview() {
       }
     });
   } else {
-    // Fallback: read as text and split manually
     const reader = new FileReader();
     reader.onload = (ev) => {
       const lines = (ev.target.result || '').split('\n').filter(Boolean);
@@ -3503,11 +3632,13 @@ async function dsImport() {
     const fd = new FormData();
     fd.append('file', DS.file);
     const endpoint = DS_TYPES[DS.dataType]?.endpoint;
-    const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST', body: fd });
+    const res = await fetch(`${API}${endpoint}`, { method: 'POST', body: fd });
     DS.importResult = await res.json();
     if (!res.ok) DS.importResult = { error: DS.importResult.error || `HTTP ${res.status}` };
-    // Reload opportunity data after successful import
-    if (res.ok) loadData();
+    if (res.ok) {
+      await loadSources();
+      loadData();
+    }
   } catch(e) {
     DS.importResult = { error: String(e) };
   }
@@ -3520,9 +3651,10 @@ async function dsResetData() {
   DS.resetting = true;
   renderDataSources();
   try {
-    const res = await fetch(`${API_BASE}/data/reset`, { method: 'POST' });
+    const res = await fetch(`${API}/data/reset`, { method: 'POST' });
     if (res.ok) {
       await loadDataStatus();
+      await loadSources();
       loadData();
     }
   } catch(e) { /* ignore */ }
