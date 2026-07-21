@@ -552,8 +552,8 @@ const API=(()=>{
   if(meta&&meta.content)return meta.content.replace(/\/$/,'');
   if(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')
     return 'http://localhost:8000';
-  // Cloudflare Tunnel public URL for the API
-  return 'https://hebrew-steps-emotional-juice.trycloudflare.com';
+  // Same server (Render, any prod host)
+  return window.location.origin;
 })();
 
 /* ── Utilities ─────────────────────────────────────────────────────── */
@@ -1091,16 +1091,25 @@ async function runAiAnalysis(measureKey, planKey, btnEl){
           if(job&&job.status==='complete'){
             clearInterval(interval);
             const fin=await apiGet('/opportunities/financial');
-            S.oppFinancial=fin;render();
-            if(btn){btn.disabled=false;btn.textContent='🤖 Re-run Analysis';}
+            const card=fin.find(o=>o.measure_key===measureKey&&o.plan_key===planKey);
+            if(card&&card.ai_analysis){
+              S.oppFinancial=fin;render();
+            }else{
+              const errMsg=job.analysis&&job.analysis.error?job.analysis.error:'Analysis ran but produced no output — check ANTHROPIC_API_KEY in .env';
+              if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
+              alert('Analysis incomplete: '+errMsg);
+            }
           }else if(job&&job.status==='error'){
             clearInterval(interval);
             if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
             alert('Analysis error: '+(job.error||'unknown'));
+          }else if(!job){
+            _jobMiss=((_jobMiss||0)+1);
+            if(_jobMiss>5){clearInterval(interval);if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}alert('Server restarted during analysis — please try again.');}
           }
         }catch(e){}
       },3000);
-      setTimeout(()=>{clearInterval(interval);if(btn&&btn.disabled){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}},180000);
+      setTimeout(()=>{clearInterval(interval);if(btn&&btn.disabled){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}alert('Analysis timed out after 3 minutes — server may be busy.')},180000);
     }catch(e){
       if(btn){btn.disabled=false;btn.textContent='🤖 Run AI Analysis';}
       alert('Could not start analysis: '+e.message);
