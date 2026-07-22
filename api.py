@@ -118,11 +118,29 @@ with get_db() as _mc:
         "ALTER TABLE dim_plan_contract ADD COLUMN plan_annual_revenue REAL DEFAULT 0",
         "ALTER TABLE dim_plan_contract ADD COLUMN total_members INTEGER DEFAULT 0",
         "ALTER TABLE dim_plan_contract ADD COLUMN plan_pmpm_monthly REAL DEFAULT 1100",
+        "ALTER TABLE dim_measure ADD COLUMN clinical_description TEXT DEFAULT ''",
+        "ALTER TABLE dim_measure ADD COLUMN age_gender_eligibility TEXT DEFAULT ''",
+        "ALTER TABLE dim_measure ADD COLUMN nba_default_playbook TEXT DEFAULT ''",
     ]:
         try:
             _mc.execute(_col)
         except Exception:
             pass
+    # Backfill clinical_description from CSV if column is empty (after migration)
+    try:
+        empty_count = _mc.execute("SELECT COUNT(*) FROM dim_measure WHERE clinical_description IS NULL OR clinical_description=''").fetchone()[0]
+        if empty_count > 0:
+            import csv as _csv
+            _dim_csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "input", "dim_measure.csv")
+            if os.path.exists(_dim_csv):
+                with open(_dim_csv, newline='', encoding='utf-8-sig') as _f:
+                    for _row in _csv.DictReader(_f):
+                        _mc.execute(
+                            "UPDATE dim_measure SET clinical_description=?, age_gender_eligibility=?, nba_default_playbook=? WHERE measure_key=?",
+                            (_row.get('clinical_description',''), _row.get('age_gender_eligibility',''), _row.get('nba_default_playbook',''), _row.get('measure_key',''))
+                        )
+    except Exception as _e:
+        logging.warning(f"[startup] clinical_description backfill skipped: {_e}")
     # Data sources table and source_id columns
     for _col in [
         "ALTER TABLE fact_member_gap ADD COLUMN source_id TEXT DEFAULT 'demo'",
@@ -292,7 +310,8 @@ async def startup_event():
 @app.get("/dashboard")
 def serve_dashboard():
     dashboard_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "index.html")
-    return FileResponse(dashboard_path, media_type="text/html")
+    return FileResponse(dashboard_path, media_type="text/html",
+                        headers={"Cache-Control":"no-cache, no-store, must-revalidate","Pragma":"no-cache","Expires":"0"})
 
 @app.post("/session/start", status_code=201)
 def start_session(body: dict[str, Any] = None):
@@ -676,6 +695,8 @@ def get_opportunities_financial():
                     result['stars_improvement_rationale'] = fa.get('stars_improvement_rationale', '')
                     result['cms_bonus'] = int(fa.get('cms_bonus_impact') or result['cms_bonus'])
                     result['total_outreach_cost'] = int(fa.get('total_outreach_cost') or result['total_outreach_cost'])
+                    result['total_cost'] = result['total_outreach_cost']  # keep in sync
+                    result['tier3_closure_rate'] = fa.get('tier_3_closure_rate') or result['tier3_closure_rate']
                     result['net_return'] = int(fa.get('net_return') or result['net_return'])
                     result['return_per_dollar'] = fa.get('return_per_dollar') or result.get('roi_ratio', 0)
                     result['confidence'] = fa.get('confidence_level') or result['confidence']

@@ -99,11 +99,22 @@ def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
     try:
         # Measure metadata
         if measure_key:
-            m_row = conn.execute(
-                "SELECT measure_key, measure_code, measure_name, star_weight, clinical_description FROM dim_measure WHERE measure_key=?",
-                (measure_key,)
-            ).fetchone()
-            result['measure'] = dict(m_row) if m_row else {}
+            try:
+                m_row = conn.execute(
+                    "SELECT measure_key, measure_code, measure_name, star_weight, clinical_description FROM dim_measure WHERE measure_key=?",
+                    (measure_key,)
+                ).fetchone()
+            except Exception:
+                m_row = conn.execute(
+                    "SELECT measure_key, measure_code, measure_name, star_weight FROM dim_measure WHERE measure_key=?",
+                    (measure_key,)
+                ).fetchone()
+            if m_row:
+                m_dict = dict(m_row)
+                m_dict.setdefault('clinical_description', '')
+                result['measure'] = m_dict
+            else:
+                result['measure'] = {}
         else:
             result['measure'] = {}
 

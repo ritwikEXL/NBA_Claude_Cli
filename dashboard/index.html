@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>CareIntel — Medicare Stars NBA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
@@ -601,7 +604,7 @@ const S={
   // filter state
   filterPlan:'',filterMeasure:'',filterPriority:'',
   // financial opportunities
-  oppFinancial:[],oppBudget:500000,oppConnectModal:false,oppForecastPlan:'P005',
+  oppFinancial:[],oppBudget:500000,oppConnectModal:false,oppForecastPlan:'P005',cardErrors:{},
   // campaign edit overrides
   campEdits:{},// {field: newValue}
   // cohort pending selection
@@ -626,65 +629,123 @@ function renderApiStatus(){
 // Tracks in-progress analyses so render() can restore button state
 const _activeAnalyses={};
 
+// Toast notification — immune to Chrome's "prevent dialogs" suppression
+function _aiToast(msg,isError){
+  const t=document.createElement('div');
+  t.textContent=msg;
+  Object.assign(t.style,{
+    position:'fixed',bottom:'24px',right:'24px',zIndex:9999,
+    background:isError?'#DC2626':'#15803D',color:'#fff',
+    padding:'.75rem 1.25rem',borderRadius:'8px',fontSize:'.85rem',
+    fontFamily:'inherit',boxShadow:'0 4px 12px rgba(0,0,0,.25)',
+    maxWidth:'420px',lineHeight:'1.45',
+    transition:'opacity .4s',opacity:'1'
+  });
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},isError?8000:4000);
+}
+
+function _setCardError(key,msg){
+  if(!S.cardErrors)S.cardErrors={};
+  if(msg)S.cardErrors[key]=msg;else delete S.cardErrors[key];
+}
+
 async function runAiAnalysis(measureKey,planKey){
+  console.log('[runAiAnalysis] called:',measureKey,planKey,'API=',API);
   const key=measureKey+'_'+planKey;
-  if(_activeAnalyses[key])return; // prevent double-start
+  if(_activeAnalyses[key]){console.log('[runAiAnalysis] already in progress, skipping');return;}
+  _setCardError(key,null);
   try{
-  _activeAnalyses[key]={dots:0};
-  render(); // immediately show Analyzing... state via render
+    _activeAnalyses[key]={dots:0};
+    try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
+    console.log('[runAiAnalysis] posting to',`${API}/financial/analyze/${measureKey}/${planKey}`);
     const kickResp=await fetch(`${API}/financial/analyze/${measureKey}/${planKey}`,{method:'POST'});
-    if(!kickResp.ok)throw new Error('HTTP '+kickResp.status);
+    console.log('[runAiAnalysis] kick status',kickResp.status);
+    if(!kickResp.ok)throw new Error('HTTP '+kickResp.status+' — is the FastAPI server running on port 8000?');
     const kick=await kickResp.json();
+    console.log('[runAiAnalysis] kick response',kick);
     if(kick.status==='cached'){
-      const fin=await apiGet('/opportunities/financial');
-      S.oppFinancial=fin;
+      console.log('[runAiAnalysis] cached — reloading page to show analysis');
       delete _activeAnalyses[key];
-      render();
+      sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
+      sessionStorage.setItem('nba_analysisKey',key);
+      sessionStorage.setItem('nba_tab','opp');
+      window.location.reload();
       return;
     }
     const jobId=kick.job_id;
     let _jobMiss=0;
     const interval=setInterval(async()=>{
+      if(!_activeAnalyses[key]){clearInterval(interval);return;}
       _activeAnalyses[key].dots=((_activeAnalyses[key].dots||0)%3)+1;
-      // Update button text in-place without full render
       const liveBtn=document.querySelector(`[data-analysis-key="${key}"]`);
       if(liveBtn)liveBtn.textContent='🤖 Analyzing'+'.'.repeat(_activeAnalyses[key].dots);
       try{
         const st=await apiGet('/financial/analyze-all/status');
         const job=st[jobId];
+        console.log('[runAiAnalysis] poll jobId='+jobId,'status=',job&&job.status);
         if(job&&job.status==='complete'){
           clearInterval(interval);
-          const fin=await apiGet('/opportunities/financial');
-          const card=fin.find(o=>o.measure_key===measureKey&&o.plan_key===planKey);
           delete _activeAnalyses[key];
-          if(card&&card.ai_analysis){
-            S.oppFinancial=fin;render();
-          }else{
-            render();
-            const errMsg=job.analysis&&job.analysis.error?job.analysis.error:'Analysis ran but produced no output — check ANTHROPIC_API_KEY in .env';
-            alert('Analysis incomplete: '+errMsg);
+          try{
+            const fin=await apiGet('/opportunities/financial');
+            const card=fin.find(o=>o.measure_key===measureKey&&o.plan_key===planKey);
+            if(card&&card.ai_analysis){
+              sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
+              sessionStorage.setItem('nba_analysisKey',key);
+              sessionStorage.setItem('nba_tab','opp');
+              window.location.reload();
+            }else{
+              const errMsg=job.analysis&&job.analysis.error?job.analysis.error:'Analysis ran but produced no output — check ANTHROPIC_API_KEY in .env';
+              _setCardError(key,errMsg);
+              try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
+              _aiToast('Analysis incomplete: '+errMsg,true);
+            }
+          }catch(fetchErr){
+            sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
+            sessionStorage.setItem('nba_analysisKey',key);
+            sessionStorage.setItem('nba_tab','opp');
+            window.location.reload();
           }
         }else if(job&&job.status==='error'){
           clearInterval(interval);
+          const msg='Analysis error: '+(job.error||'unknown');
           delete _activeAnalyses[key];
-          render();
-          alert('Analysis error: '+(job.error||'unknown'));
+          _setCardError(key,msg);
+          try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
+          _aiToast(msg,true);
         }else if(!job){
           _jobMiss++;
-          if(_jobMiss>5){clearInterval(interval);delete _activeAnalyses[key];render();alert('Server restarted during analysis — please try again.');}
+          if(_jobMiss>5){
+            clearInterval(interval);
+            const msg='Server lost track of the job — please try again.';
+            delete _activeAnalyses[key];
+            _setCardError(key,msg);
+            try{render();}catch(re){};
+            _aiToast(msg,true);
+          }
         }
       }catch(e){console.error('[AI Analysis] poll error:',e);}
     },3000);
     setTimeout(()=>{
-      if(_activeAnalyses[key]){clearInterval(interval);delete _activeAnalyses[key];render();alert('Analysis timed out after 3 minutes — server may be busy.');}
+      if(_activeAnalyses[key]){
+        clearInterval(interval);
+        const msg='Analysis timed out after 3 minutes — server may be busy.';
+        delete _activeAnalyses[key];
+        _setCardError(key,msg);
+        try{render();}catch(re){};
+        _aiToast(msg,true);
+      }
     },180000);
   }catch(e){
     console.error('[AI Analysis] start error:',e);
     delete _activeAnalyses[key];
-    render();
-    alert('Could not start analysis: '+e.message);
+    _setCardError(key,'Could not start: '+e.message);
+    try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
+    _aiToast('Could not start analysis: '+e.message,true);
   }
 }
+window.runAiAnalysis=runAiAnalysis;
 
 async function runAllAiAnalyses(){
   const btn=document.getElementById('run-all-analyses-btn');
@@ -724,6 +785,12 @@ async function loadData(){
       avgProp:r.avg_propensity,score:r.composite_score,priority:r.priority,
     }));
     S.oppFinancial=fin||[];
+    // Restore plan selection after analysis-triggered reload
+    const _savedPlan=sessionStorage.getItem('nba_filterPlan');
+    const _savedKey=sessionStorage.getItem('nba_analysisKey');
+    if(_savedPlan){S.filterPlan=_savedPlan;sessionStorage.removeItem('nba_filterPlan');}
+    if(_savedKey){S._highlightCardKey=_savedKey;sessionStorage.removeItem('nba_analysisKey');}
+    // Tab is restored AFTER loadLatestSession (see init chain at bottom)
     S.opportunities=S.opportunities.map(r=>({...r,
       gaps:[],// loaded on-demand in confirmOpp
     }));
@@ -2455,7 +2522,8 @@ function renderOpp(){
     const confDesc=o.confidence_description||({'HIGH':'More than 20 eligible members · plan compliance above 30%','MEDIUM':'10–20 eligible members · using industry benchmarks','LOW':'Fewer than 10 eligible members — verify with full claims data'}[conf]||'');
     const swLabel=o.star_weight>=3?'Highest Weight':o.star_weight>=2?'High Weight':o.star_weight>=1.5?'Medium Weight':'Standard Weight';
     const swColor=o.star_weight>=3?'var(--red)':o.star_weight>=2?'var(--amber)':o.star_weight>=1.5?'var(--blue)':'var(--g400)';
-    return`<div class="opp-top-card">
+    const _isHighlight=S._highlightCardKey===(o.measure_key+'_'+o.plan_key);
+    return`<div class="opp-top-card" id="card-${o.measure_key}-${o.plan_key}"${_isHighlight?' style="outline:3px solid var(--teal);outline-offset:2px;border-radius:10px;"':''}>
       <div style="padding:.7rem 1.3rem;background:var(--g50);border-bottom:1px solid var(--g100);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
         <div style="display:flex;align-items:center;gap:.65rem">
           <span style="font-size:.72rem;font-weight:700;background:var(--teal);color:#fff;border-radius:4px;padding:.15rem .5rem">#${idx+1}</span>
@@ -2498,7 +2566,7 @@ function renderOpp(){
             ${o.tier1_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier1_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t1cpm}/member · $${o.tier1_cost.toLocaleString()} total</strong></span>
-              <span>Expected: <strong style="color:#F15A22">~${t1exp} completions</strong> at ${Math.round(t1r*100)}%</span>
+              <span>Expected: <strong style="color:#F15A22">~${t1exp} completions</strong> at ${t1m>0?Math.round(t1exp/t1m*100):Math.round(t1r*100)}%</span>
             </div>
           </div>`:`<div class="tier-block tier-likely" style="opacity:.4;margin-bottom:.5rem;font-size:.75rem">Likely to Act — no eligible members</div>`}
           ${t2m>0?`<div class="tier-block tier-probably" style="margin-bottom:.5rem">
@@ -2510,7 +2578,7 @@ function renderOpp(){
             ${o.tier2_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier2_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t2cpm}/member · $${o.tier2_cost.toLocaleString()} total</strong></span>
-              <span>Expected: <strong style="color:#D97706">~${t2exp} completions</strong> at ${Math.round(t2r*100)}%</span>
+              <span>Expected: <strong style="color:#D97706">~${t2exp} completions</strong> at ${t2m>0?Math.round(t2exp/t2m*100):Math.round(t2r*100)}%</span>
             </div>
           </div>`:`<div class="tier-block tier-probably" style="opacity:.4;margin-bottom:.5rem;font-size:.75rem">Probably Will Act — no eligible members</div>`}
           ${t3m>0?`<div class="tier-block tier-hightouch" style="margin-bottom:.75rem">
@@ -2522,11 +2590,11 @@ function renderOpp(){
             ${o.tier3_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier3_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t3cpm}/member · $${o.tier3_cost.toLocaleString()} total</strong></span>
-              <span>Expected: <strong style="color:#7C3AED">~${t3exp} completions</strong> at ${Math.round(t3r*100)}%</span>
+              <span>Expected: <strong style="color:#7C3AED">~${t3exp} completions</strong> at ${t3m>0?Math.round(t3exp/t3m*100):Math.round(t3r*100)}%</span>
             </div>
           </div>`:`<div class="tier-block tier-hightouch" style="opacity:.4;margin-bottom:.75rem;font-size:.75rem">Need High Touch — no eligible members</div>`}
           <div style="font-size:.67rem;color:var(--g400);line-height:1.4;padding:.3rem .1rem;margin-bottom:.4rem">
-            Projected member counts based on estimated eligible population of ${(o.eligible_pool||o.eligible_members||0).toLocaleString()} members. Connect your data source for plan-specific figures.
+            Projected member counts based on estimated eligible population of ${(o.eligible_pool||o.eligible_members||0).toLocaleString()} members (plan population × eligibility rate for this measure). Compliance rate and tier propensity derived from actual uploaded data.
           </div>
           <div style="background:linear-gradient(135deg,#EAF6F2,#F5FBF9);border:1.5px solid #A7D9C8;border-radius:8px;padding:.75rem .9rem">
             <div style="font-size:.74rem;font-weight:700;color:var(--teal);margin-bottom:.5rem">If you target Tier 1 + Tier 2 only <span style="font-size:.67rem;font-weight:400;color:var(--g500)">— all figures estimated</span></div>
@@ -2576,6 +2644,7 @@ function renderOpp(){
   <div style="font-size:.8rem;color:var(--g500);margin-bottom:.6rem">Financial projections require AI analysis</div>
   <div style="font-size:.72rem;color:var(--g400);margin-bottom:.75rem">Run the AI analysis to get Claude-generated closure rates, outreach costs, and ROI based on your actual member population data.</div>
   ${_activeAnalyses[o.measure_key+'_'+o.plan_key]?`<button disabled data-analysis-key="${o.measure_key}_${o.plan_key}" style="background:var(--teal);color:#fff;border:none;padding:.45rem 1.1rem;border-radius:6px;font-size:.78rem;font-weight:600;opacity:.7;cursor:not-allowed">🤖 Analyzing...</button>`:`<button onclick="runAiAnalysis('${o.measure_key}','${o.plan_key}')" style="background:var(--teal);color:#fff;border:none;padding:.45rem 1.1rem;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer">🤖 Run AI Analysis</button>`}
+  ${(S.cardErrors&&S.cardErrors[o.measure_key+'_'+o.plan_key])?`<div style="margin-top:.6rem;padding:.45rem .7rem;background:#FEF2F2;border:1px solid #FECACA;border-radius:5px;font-size:.72rem;color:#DC2626;text-align:left">⚠ ${S.cardErrors[o.measure_key+'_'+o.plan_key]}</div>`:''}
 </div>`}
           </div>
         </div>
@@ -2697,7 +2766,10 @@ function renderOpp(){
             const hasReturn=bonusCapped>0;
             const isAnalyzing=!!_activeAnalyses[o.measure_key+'_'+o.plan_key];
             const returnLabel=o.funding!=='unfunded'
-              ?(hasReturn?`<span style="font-size:.72rem;color:#16a34a">${_fmtN(bonusCapped)} return</span>`
+              ?(o.ai_analysis
+                ?(hasReturn
+                  ?`<span style="font-size:.72rem;color:#16a34a">${_fmtN(bonusCapped)} return</span>`
+                  :`<span style="font-size:.72rem;color:var(--g500)">analyzed · no positive return</span>`)
                 :(isAnalyzing
                   ?`<span style="font-size:.72rem;color:var(--amber)">⏳ analyzing…</span>`
                   :`<button onclick="runAiAnalysis('${o.measure_key}','${o.plan_key}')" style="font-size:.72rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;text-decoration:underline" title="Click to run AI analysis for this opportunity">⚠ run AI</button>`))
@@ -3329,7 +3401,22 @@ document.addEventListener('click',e=>{
 
 /* ── Init ──────────────────────────────────────────────────────────── */
 checkApiHealth();
-loadData().then(loadLatestSession);
+loadData().then(loadLatestSession).then(()=>{
+  const _savedTab=sessionStorage.getItem('nba_tab');
+  if(_savedTab){S.tab=_savedTab;sessionStorage.removeItem('nba_tab');}
+  if(S._highlightCardKey){
+    _aiToast('✓ AI analysis complete — results shown below',false);
+    // Scroll to the analyzed card after a brief delay for DOM settle
+    setTimeout(()=>{
+      const cardId='card-'+S._highlightCardKey.replace('_','-');
+      const el=document.getElementById(cardId);
+      if(el){el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+      // Flash highlight then clear
+      setTimeout(()=>{S._highlightCardKey=null;try{renderOpp();}catch(e){}},3000);
+    },400);
+  }
+  render();
+});
 
 /* ══════════════════════════════════════════════════════════════════════
    DATA SOURCES TAB
