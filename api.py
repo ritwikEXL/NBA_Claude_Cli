@@ -682,22 +682,26 @@ def get_opportunities_financial():
                     result['tier3_count'] = fa.get('tier_3_count') or result['tier3_count']
                     result['tier3_definition'] = fa.get('tier_3_definition', '')
                     result['tier3_closure_rationale'] = fa.get('tier_3_closure_rationale', '')
-                    # Merge AI-computed closures so display is consistent with AI tier counts
+                    # Merge AI-computed closures (guard against negative values)
                     if fa.get('tier_1_expected_closures'):
-                        result['tier1_closures'] = fa['tier_1_expected_closures']
+                        result['tier1_closures'] = max(0, fa['tier_1_expected_closures'])
                     if fa.get('tier_2_expected_closures'):
-                        result['tier2_closures'] = fa['tier_2_expected_closures']
+                        result['tier2_closures'] = max(0, fa['tier_2_expected_closures'])
                     if fa.get('tier_3_expected_closures'):
-                        result['tier3_closures'] = fa['tier_3_expected_closures']
+                        result['tier3_closures'] = max(0, fa['tier_3_expected_closures'])
                     if fa.get('expected_total_closures'):
-                        result['total_expected_closures'] = fa['expected_total_closures']
+                        result['total_expected_closures'] = max(0, fa['expected_total_closures'])
                     result['stars_improvement'] = fa.get('stars_improvement') or result['stars_improvement']
                     result['stars_improvement_rationale'] = fa.get('stars_improvement_rationale', '')
                     result['cms_bonus'] = int(fa.get('cms_bonus_impact') or result['cms_bonus'])
-                    result['total_outreach_cost'] = int(fa.get('total_outreach_cost') or result['total_outreach_cost'])
-                    result['total_cost'] = result['total_outreach_cost']  # keep in sync
                     result['tier3_closure_rate'] = fa.get('tier_3_closure_rate') or result['tier3_closure_rate']
-                    result['net_return'] = int(fa.get('net_return') or result['net_return'])
+                    # Recompute tier costs from AI-merged counts so all displayed numbers are consistent
+                    result['tier1_cost'] = int(round(result['tier1_count'] * T1_COST))
+                    result['tier2_cost'] = int(round(result['tier2_count'] * T2_COST))
+                    result['tier3_cost'] = int(round(result['tier3_count'] * T3_COST))
+                    result['total_outreach_cost'] = result['tier1_cost'] + result['tier2_cost'] + result['tier3_cost']
+                    result['total_cost'] = result['total_outreach_cost']
+                    result['net_return'] = result['cms_bonus'] - result['total_outreach_cost']
                     result['return_per_dollar'] = fa.get('return_per_dollar') or result.get('roi_ratio', 0)
                     result['confidence'] = fa.get('confidence_level') or result['confidence']
                     result['confidence_description'] = fa.get('confidence_rationale') or result['confidence_description']

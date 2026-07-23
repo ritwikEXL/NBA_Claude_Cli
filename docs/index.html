@@ -2297,23 +2297,20 @@ function _greedyAlloc(opps,budget){
     const fsCapped=Math.min(fs, capRoom);
     planStarsUsed[o.plan_key]=(already)+fsCapped;
 
-    // Funded bonus = Stars actually counted (after cap) × plan economics
+    // Funded bonus: use AI-provided cms_bonus (scaled by closure fraction) when available; fall back to Stars estimate
     const pm=planMeta[o.plan_key];
-    const fb=Math.round(fsCapped * pm.members * pm.annual_pmpm * 0.05);
+    const fundFrac=o.total_expected_closures>0?fco/o.total_expected_closures:1;
+    const fb=o.ai_analysis&&o.cms_bonus>0
+      ?Math.round(o.cms_bonus*Math.min(1,fundFrac))
+      :Math.round(fsCapped*pm.members*pm.annual_pmpm*0.05);
 
     totalCost+=fc;
     const fundingLabel=fl==='full'?'full':fc===t12?'Tier 1+2 only':'Tier 1 only';
     return{...o,funding:fl,funded_cost:fc,funded_stars:fsCapped,funded_bonus:fb,funded_closures:fco,funding_label:fundingLabel};
   });
 
-  // Total bonus = sum per plan of min(planStars,0.30)×members×annual_pmpm×5%
-  const planBonusMap={};
-  for(const o of funded){
-    if(o.funding==='unfunded')continue;
-    if(!planBonusMap[o.plan_key]) planBonusMap[o.plan_key]={stars:0,members:o.plan_total_members||500,annual_pmpm:(o.annual_pmpm||(o.plan_pmpm_monthly||920)*12)};
-    planBonusMap[o.plan_key].stars+=(o.funded_stars||0);
-  }
-  const totalBonus=_planCappedBonus(planBonusMap);
+  // Total bonus = sum of per-opportunity funded bonuses (consistent with card numbers)
+  const totalBonus=funded.filter(f=>f.funding!=='unfunded').reduce((s,o)=>s+(o.funded_bonus||0),0);
   const totalStars=Object.values(planStarsUsed).reduce((s,v)=>s+v,0);
   return{funded,totalStars,totalBonus,totalCost,netReturn:totalBonus-totalCost};
 }
@@ -2410,7 +2407,7 @@ function renderOpp(){
   const bpPlanStars={};
   for(const o of funded){if(o.funding==='unfunded')continue;bpPlanStars[o.plan_key]=(bpPlanStars[o.plan_key]||0)+(o.funded_stars||0);}
   const bpPortStars=Object.values(bpPlanStars).reduce((s,v)=>s+Math.min(v,0.25),0);
-  const bpTotalClosures=funded.filter(f=>f.funding!=='unfunded').reduce((s,o)=>s+(o.funded_closures||0),0);
+  const bpTotalClosures=funded.filter(f=>f.funding!=='unfunded').reduce((s,o)=>s+Math.max(0,o.funded_closures||0),0);
   const bpFundedCount=funded.filter(f=>f.funding==='full').length;
   const bpPartialCount=funded.filter(f=>f.funding==='partial').length;
   const bpTotalCost=alloc.totalCost;
@@ -2487,11 +2484,11 @@ function renderOpp(){
     const t3exp=Math.round(o.tier3_closures||0);
     const t12m=t1m+t2m;
     const t12exp=t1exp+t2exp;
-    const t12cost=o.total_outreach_cost||0;
+    const t12cost=(o.tier1_cost||0)+(o.tier2_cost||0);
     const t12stars=o.stars_improvement||0;
     // Use server-computed CMS bonus directly (based on realistic eligible_pool)
     const t12bonus=o.cms_bonus||0;
-    const t12net=o.net_return||0;
+    const t12net=t12bonus-t12cost;
     const t12roi=t12cost>0?Math.round(t12net/Math.max(t12cost,1)):0;
     // Max CMS bonus if ALL gaps on this measure closed (capped at 2% plan revenue, adjusted for upside)
     const maxCmsBonus=Math.round(_capB(o.cms_bonus_all*upside,planRev));
@@ -2779,7 +2776,7 @@ function renderOpp(){
           <span style="font-size:.78rem;color:var(--g600)">${l} <span style="font-size:.65rem;color:var(--g400);font-weight:400">${scope}</span></span>
           <strong style="font-size:.88rem;color:${c};white-space:nowrap">${v}</strong>
         </div>`).join('')}
-        <div style="font-size:.69rem;color:var(--g500);margin-top:.75rem;line-height:1.5">All figures are estimates using synthetic demo data. Actual results depend on member population and execution quality. Stars capped at 0.25★/plan/quarter.</div>
+        <div style="font-size:.69rem;color:var(--g500);margin-top:.75rem;line-height:1.6"><strong style="color:var(--g600)">How to read these numbers:</strong> "CMS bonus" = estimated increase in CMS quality bonus payments if these gaps are closed — this is the same number shown on each opportunity card. "Total outreach cost" = staff time + incentives to contact members (T1 digital ≈ $0.50/member, T2 phone ≈ $207/member). "Net return" = CMS bonus minus outreach cost. All figures are projections using synthetic demo data; actual results depend on member engagement and execution quality.</div>
       </div>
     </div>
   </div>
