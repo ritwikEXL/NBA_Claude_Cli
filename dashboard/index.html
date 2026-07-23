@@ -2419,7 +2419,9 @@ function renderOpp(){
   const daysLeft=Math.max(0,Math.round((yearEnd-now)/86400000));
 
   // Section 2: top 3 for this plan
-  const top3=[...planFin].sort((a,b)=>b.net_return-a.net_return).slice(0,3);
+  // Stable sort: star weight (CMS impact) DESC, then open population DESC
+  // Net return is a display field only — never used as sort key (it changes after AI analysis)
+  const allOpps=[...planFin].sort((a,b)=>b.star_weight-a.star_weight||b.open_population-a.open_population);
 
   // Section 4: budget planner
   const presets=[50000,100000,250000,500000,1000000,2000000];
@@ -2482,12 +2484,12 @@ function renderOpp(){
   <!-- SECTION 2: TOP OPPORTUNITIES -->
   <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:.85rem;flex-wrap:wrap;gap:.5rem">
     <div>
-      <div style="font-size:.95rem;font-weight:700;color:var(--g900)">Top Opportunities — ${sel.name.replace('Aurora ','')}</div>
-      <div style="font-size:.75rem;color:var(--g400);margin-top:.1rem">Ranked by net return · highest financial impact first · <span style="color:var(--amber)">all projections estimated</span></div>
+      <div style="font-size:.95rem;font-weight:700;color:var(--g900)">All Opportunities — ${sel.name.replace('Aurora ','')}</div>
+      <div style="font-size:.75rem;color:var(--g400);margin-top:.1rem">Ranked by Star weight (CMS impact) · order is stable and does not change when AI analysis runs · <span style="color:var(--amber)">financial projections estimated</span></div>
     </div>
   </div>
 
-  ${top3.map((o,idx)=>{
+  ${allOpps.map((o,idx)=>{
     const compPct=Math.round(o.compliance_rate*100);
     const benchPct=Math.round(o.national_benchmark*100);
     const gapPct=Math.round(o.gap_to_benchmark*100);
