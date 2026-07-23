@@ -453,10 +453,13 @@ def get_opportunities_financial():
         plan_summary = {r["plan_key"]: dict(r) for r in plan_summary_rows}
 
         # ── plan_population: true member counts and revenue ────────────
-        pop_rows = conn.execute(
-            "SELECT plan_key, total_members, plan_revenue FROM plan_population"
-        ).fetchall()
-        plan_pop = {r["plan_key"]: dict(r) for r in pop_rows}
+        try:
+            pop_rows = conn.execute(
+                "SELECT plan_key, total_members, plan_revenue FROM plan_population"
+            ).fetchall()
+            plan_pop = {r["plan_key"]: dict(r) for r in pop_rows}
+        except Exception:
+            plan_pop = {}  # seed_expansion.py may not have run yet; fall back to dim_plan_contract
 
         # ── Main query ─────────────────────────────────────────────────
         rows = conn.execute("""
@@ -508,13 +511,11 @@ def get_opportunities_financial():
         top_quartile_rate    = bench.get("top_quartile_rate", 0.80)
         bottom_quartile_rate = bench.get("bottom_quartile_rate", 0.60)
 
-        # ── Eligible / compliant from DB ───────────────────────────────
+        # ── Eligible / compliant from DB (DISTINCT members — more accurate) ──
         elig_data     = elig_by_mk_pk.get((mk, pk), {})
-        denominator   = max(float(d.get("eligible_members", 1) or 1), 1.0)
-        compliant_cnt = float(elig_data.get("compliant_count", 0))
-        compliance_rate  = round(compliant_cnt / denominator, 4)
-        open_population  = float(d.get("open_gaps", 0) or 0)
-        gap_to_benchmark = round(max(0.0, min(benchmark - compliance_rate, 0.40)), 4)
+        elig_distinct = max(int(elig_data.get("eligible_count", 1) or 1), 1)
+        compliant_cnt = int(elig_data.get("compliant_count", 0) or 0)
+        open_population = float(d.get("open_gaps", 0) or 0)
 
         # ── Plan economics from plan_population table ──────────────────
         pop_data    = plan_pop.get(pk, {})
@@ -531,45 +532,46 @@ def get_opportunities_financial():
         elig_rate = ELIG_RATES.get(mc, 0.25)
 
         # STEP 1 — Eligible pool from plan_population × eligibility rate
-        eligible_pool = round(plan_members * elig_rate)
+        eligible_pool = max(round(plan_members * elig_rate), 1)
 
-        # STEP 2 — Compliance rate from our DB data
-        total_in_data = int(d.get("eligible_members", 1) or 1)
-        closed_in_data = int(d.get("closed_gaps", 0) or 0)
-        compliance_rate = round(closed_in_data / max(total_in_data, 1), 4)
+        # STEP 2 — Compliance rate: closed distinct members / all distinct members
+        # Using DISTINCT member counts avoids inflation from expansion rows that
+        # cycle the same member_keys, which would make compliance look ~5× lower.
+        compliance_rate = round(compliant_cnt / elig_distinct, 4)
+        gap_to_benchmark = round(max(0.0, min(benchmark - compliance_rate, 0.40)), 4)
 
         # STEP 3 — Apply compliance to eligible pool → realistic open gaps
         open_gaps_realistic = round(eligible_pool * (1.0 - compliance_rate))
         open_gaps_db = int(d.get("open_gaps", 0) or 0)
         open_population = float(open_gaps_realistic)
 
-        # STEP 4 — Tier % distribution from DB propensity data
+        # STEP 4 — Tier % distribution from DB propensity data, scaled to realistic pop
         t1_db_raw = int(d.get("tier1_count", 0) or 0)
         t2_db_raw = int(d.get("tier2_count", 0) or 0)
         t3_db_raw = int(d.get("tier3_count", 0) or 0)
         total_open_db = max(t1_db_raw + t2_db_raw + t3_db_raw, 1)
         t1_pct = t1_db_raw / total_open_db
         t2_pct = t2_db_raw / total_open_db
-        t3_pct = t3_db_raw / total_open_db
 
-        # Scale to realistic population
-        t1_db = round(open_gaps_realistic * t1_pct)
-        t2_db = round(open_gaps_realistic * t2_pct)
-        t3_db = open_gaps_realistic - t1_db - t2_db  # ensure sum exact
+        # Clamp each tier so rounding never pushes the residual negative
+        t1_db = min(round(open_gaps_realistic * t1_pct), open_gaps_realistic)
+        t2_db = min(round(open_gaps_realistic * t2_pct), open_gaps_realistic - t1_db)
+        t3_db = max(0, open_gaps_realistic - t1_db - t2_db)
 
         # STEP 5 — Closure rates
         hist    = hist_by_mk.get(mk, {})
         hist_n  = hist.get("total_outreached", 0) or 0
         if hist_n >= 5:
-            hist_rate    = round(hist["closed_count"] / hist_n, 4)
-            t1_close     = hist_rate
-            t2_close     = hist_rate
-            t3_close     = hist_rate
+            # Historical data exists — maintain tier hierarchy around the observed rate
+            hist_rate     = round(hist["closed_count"] / hist_n, 4)
+            t1_close      = min(0.95, round(hist_rate * 1.50, 4))  # T1: high propensity responds best
+            t2_close      = hist_rate                               # T2: at the observed average
+            t3_close      = round(hist_rate * 0.55, 4)             # T3: needs high-touch, responds less
             closure_basis = "historical"
         else:
-            t1_close     = closure_assumptions.get((mk, 1), {}).get("expected_rate", 0.60)
-            t2_close     = closure_assumptions.get((mk, 2), {}).get("expected_rate", 0.35)
-            t3_close     = closure_assumptions.get((mk, 3), {}).get("expected_rate", 0.18)
+            t1_close      = closure_assumptions.get((mk, 1), {}).get("expected_rate", 0.60)
+            t2_close      = closure_assumptions.get((mk, 2), {}).get("expected_rate", 0.35)
+            t3_close      = closure_assumptions.get((mk, 3), {}).get("expected_rate", 0.18)
             closure_basis = "assumed"
 
         t1_closures = round(t1_db * t1_close, 1)
