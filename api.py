@@ -288,6 +288,24 @@ async def startup_event():
     except Exception as e:
         logging.error(f"[startup] Seed error: {e}")
 
+    # ── Post-seed migration: ensure source_id columns exist after seeding ─────
+    # The module-level ALTER TABLE runs before seed creates the tables, so it
+    # always fails on a fresh Render deploy. Re-run here after seed completes.
+    try:
+        with get_db() as _mc:
+            for _col in [
+                "ALTER TABLE fact_member_gap ADD COLUMN source_id TEXT DEFAULT 'demo'",
+                "ALTER TABLE dim_member ADD COLUMN source_id TEXT DEFAULT 'demo'",
+                "ALTER TABLE dim_plan_contract ADD COLUMN source_id TEXT DEFAULT 'demo'",
+            ]:
+                try:
+                    _mc.execute(_col)
+                except Exception:
+                    pass  # column already exists — expected on second+ deploy
+        logging.info("[startup] source_id post-seed migration complete")
+    except Exception as _me:
+        logging.error(f"[startup] source_id migration error: {_me}")
+
     # ── ngrok tunnel (local dev only) ─────────────────────────────────────────
     url_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ngrok_url.txt")
     try:

@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS dim_plan_contract (
     star_rating_target REAL,
     plan_annual_revenue REAL DEFAULT 350000000,
     total_members INTEGER DEFAULT 500,
-    plan_pmpm_monthly REAL DEFAULT 1100
+    plan_pmpm_monthly REAL DEFAULT 1100,
+    source_id TEXT DEFAULT 'demo'
 );
 
 CREATE TABLE IF NOT EXISTS dim_member (
@@ -56,7 +57,8 @@ CREATE TABLE IF NOT EXISTS dim_member (
     language_preference TEXT,
     digital_literacy_segment TEXT,
     socioeconomic_segment TEXT,
-    display_name TEXT
+    display_name TEXT,
+    source_id TEXT DEFAULT 'demo'
 );
 
 CREATE TABLE IF NOT EXISTS dim_member_channel_pref (
@@ -81,7 +83,8 @@ CREATE TABLE IF NOT EXISTS fact_member_gap (
     nba_propensity_score REAL,
     clinical_risk_score REAL,
     previous_year_gap_flag TEXT,
-    is_suppressed TEXT DEFAULT 'false'
+    is_suppressed TEXT DEFAULT 'false',
+    source_id TEXT DEFAULT 'demo'
 );
 
 CREATE TABLE IF NOT EXISTS fact_nba_claude_decision (
@@ -300,7 +303,7 @@ PLANS = [
 
 for p in PLANS:
     conn.execute(
-        "INSERT OR REPLACE INTO dim_plan_contract VALUES (?,?,?,?,?,?,?,?,?,?)", p
+        "INSERT OR REPLACE INTO dim_plan_contract (plan_key,plan_name,contract_id,region,segment,star_rating_current,star_rating_target,plan_annual_revenue,total_members,plan_pmpm_monthly) VALUES (?,?,?,?,?,?,?,?,?,?)", p
     )
 conn.commit()
 print("[seed] Plans seeded")
@@ -399,7 +402,7 @@ for plan_key, count in PLAN_WEIGHTS.items():
         m_idx += 1
 
 conn.executemany(
-    "INSERT OR REPLACE INTO dim_member VALUES (?,?,?,?,?,?,?,?)", members
+    "INSERT OR REPLACE INTO dim_member (member_key,plan_key,age_band,gender,language_preference,digital_literacy_segment,socioeconomic_segment,display_name) VALUES (?,?,?,?,?,?,?,?)", members
 )
 
 # Channel prefs
@@ -457,7 +460,7 @@ for plan_key, mlist in member_by_plan.items():
             g_idx += 1
 
 conn.executemany(
-    "INSERT OR REPLACE INTO fact_member_gap VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", gaps
+    "INSERT OR REPLACE INTO fact_member_gap (member_gap_key,member_key,measure_key,measure_code,plan_key,gap_status,measurement_year,days_open,nba_propensity_score,clinical_risk_score,previous_year_gap_flag,is_suppressed) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", gaps
 )
 conn.commit()
 print(f"[seed] {len(gaps)} gap rows seeded")
