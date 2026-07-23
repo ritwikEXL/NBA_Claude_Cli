@@ -288,23 +288,32 @@ async def startup_event():
     except Exception as e:
         logging.error(f"[startup] Seed error: {e}")
 
-    # ── Post-seed migration: ensure source_id columns exist after seeding ─────
-    # The module-level ALTER TABLE runs before seed creates the tables, so it
-    # always fails on a fresh Render deploy. Re-run here after seed completes.
+    # ── Post-seed migration: ensure all schema columns exist after seeding ──────
+    # Module-level ALTER TABLEs run before seed creates tables on a fresh Render
+    # deploy (ephemeral filesystem), so they always fail silently there.
+    # Re-running here after seed guarantees tables exist before we alter them.
+    _post_seed_migrations = [
+        "ALTER TABLE fact_member_gap ADD COLUMN source_id TEXT DEFAULT 'demo'",
+        "ALTER TABLE dim_member ADD COLUMN source_id TEXT DEFAULT 'demo'",
+        "ALTER TABLE dim_plan_contract ADD COLUMN source_id TEXT DEFAULT 'demo'",
+        "ALTER TABLE fact_member_gap ADD COLUMN gap_open_date TEXT",
+        "ALTER TABLE fact_member_gap ADD COLUMN gap_close_date TEXT",
+        "ALTER TABLE fact_member_gap ADD COLUMN upstream_recommended_channel TEXT",
+        "ALTER TABLE fact_member_gap ADD COLUMN upstream_recommended_incentive TEXT",
+        "ALTER TABLE fact_member_gap ADD COLUMN upstream_recommended_priority TEXT",
+        "ALTER TABLE fact_member_gap ADD COLUMN last_outreach_date TEXT",
+        "ALTER TABLE fact_member_gap ADD COLUMN last_outreach_channel TEXT",
+    ]
     try:
         with get_db() as _mc:
-            for _col in [
-                "ALTER TABLE fact_member_gap ADD COLUMN source_id TEXT DEFAULT 'demo'",
-                "ALTER TABLE dim_member ADD COLUMN source_id TEXT DEFAULT 'demo'",
-                "ALTER TABLE dim_plan_contract ADD COLUMN source_id TEXT DEFAULT 'demo'",
-            ]:
+            for _col in _post_seed_migrations:
                 try:
                     _mc.execute(_col)
                 except Exception:
                     pass  # column already exists — expected on second+ deploy
-        logging.info("[startup] source_id post-seed migration complete")
+        logging.info("[startup] post-seed schema migration complete")
     except Exception as _me:
-        logging.error(f"[startup] source_id migration error: {_me}")
+        logging.error(f"[startup] post-seed migration error: {_me}")
 
     # ── ngrok tunnel (local dev only) ─────────────────────────────────────────
     url_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ngrok_url.txt")

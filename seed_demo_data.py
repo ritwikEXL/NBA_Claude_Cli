@@ -79,10 +79,17 @@ CREATE TABLE IF NOT EXISTS fact_member_gap (
     plan_key TEXT,
     gap_status TEXT,
     measurement_year INTEGER,
+    gap_open_date TEXT,
+    gap_close_date TEXT,
     days_open INTEGER,
     nba_propensity_score REAL,
     clinical_risk_score REAL,
     previous_year_gap_flag TEXT,
+    upstream_recommended_channel TEXT,
+    upstream_recommended_incentive TEXT,
+    upstream_recommended_priority TEXT,
+    last_outreach_date TEXT,
+    last_outreach_channel TEXT,
     is_suppressed TEXT DEFAULT 'false',
     source_id TEXT DEFAULT 'demo'
 );

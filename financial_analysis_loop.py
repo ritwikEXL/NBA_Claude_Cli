@@ -394,20 +394,23 @@ def get_intervention_complexity(measure_key, plan_key=None, source_id='demo'):
         result = dict(row) if row else {}
 
         # Channel distribution
-        ch_q = """
-            SELECT upstream_recommended_channel, COUNT(*) AS cnt
-            FROM fact_member_gap
-            WHERE LOWER(gap_status) IN ('open','borderline','partial')
-              AND (source_id=? OR source_id IS NULL)
-              AND measure_key=?
-        """
-        ch_params = [source_id, measure_key]
-        if plan_key:
-            ch_q += " AND plan_key=?"
-            ch_params.append(plan_key)
-        ch_q += " GROUP BY upstream_recommended_channel"
-        ch_rows = conn.execute(ch_q, ch_params).fetchall()
-        result['channel_distribution'] = {r['upstream_recommended_channel']: r['cnt'] for r in ch_rows}
+        try:
+            ch_q = """
+                SELECT upstream_recommended_channel, COUNT(*) AS cnt
+                FROM fact_member_gap
+                WHERE LOWER(gap_status) IN ('open','borderline','partial')
+                  AND (source_id=? OR source_id IS NULL)
+                  AND measure_key=?
+            """
+            ch_params = [source_id, measure_key]
+            if plan_key:
+                ch_q += " AND plan_key=?"
+                ch_params.append(plan_key)
+            ch_q += " GROUP BY upstream_recommended_channel"
+            ch_rows = conn.execute(ch_q, ch_params).fetchall()
+            result['channel_distribution'] = {r['upstream_recommended_channel']: r['cnt'] for r in ch_rows}
+        except Exception:
+            result['channel_distribution'] = {}
 
     finally:
         conn.close()
