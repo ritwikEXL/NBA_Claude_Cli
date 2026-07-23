@@ -711,6 +711,21 @@ def get_opportunities_financial():
                     result['tier3_count'] = fa.get('tier_3_count') or result['tier3_count']
                     result['tier3_definition'] = fa.get('tier_3_definition', '')
                     result['tier3_closure_rationale'] = fa.get('tier_3_closure_rationale', '')
+                    # Scale AI tier counts to the realistic open population so
+                    # tier1+tier2+tier3 always sums to open_gaps_realistic.
+                    # AI analyzes the small demo dataset; open_gaps_realistic is
+                    # projected from real plan population (tens of thousands).
+                    _ai_tier_sum = result['tier1_count'] + result['tier2_count'] + result['tier3_count']
+                    if _ai_tier_sum > 0:
+                        _ror = int(result['open_gaps_realistic'])
+                        _p1 = result['tier1_count'] / _ai_tier_sum
+                        _p2 = result['tier2_count'] / _ai_tier_sum
+                        _t1s = min(round(_ror * _p1), _ror)
+                        _t2s = min(round(_ror * _p2), _ror - _t1s)
+                        _t3s = max(0, _ror - _t1s - _t2s)
+                        result['tier1_count'] = _t1s
+                        result['tier2_count'] = _t2s
+                        result['tier3_count'] = _t3s
                     # Merge AI-computed closures (guard against negative values)
                     if fa.get('tier_1_expected_closures'):
                         result['tier1_closures'] = max(0, fa['tier_1_expected_closures'])
