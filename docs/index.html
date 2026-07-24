@@ -851,7 +851,7 @@ function confirmCampaign(){
   S.agentSt.out='active';S.agentSum.out='Generating outreach plan…';
   S.phase=4;S.step4Loading=true;S.campEdits={};render();
   _triggerAiLoop('outreach');
-  setTimeout(()=>{S.step4Loading=false;buildOutputs();render();},1600);
+  setTimeout(()=>{S.step4Loading=false;try{buildOutputs();}catch(e){console.warn('buildOutputs err:',e);}finally{if(S.agentSt.out!=='done')S.agentSt.out='done';}render();},1600);
 }
 
 async function preloadPreviews(){
@@ -936,13 +936,13 @@ async function finalizeSession(){
       apiPost(`/session/${S.runId}/campaign`,campRow),
     ]);
     await apiPost(`/session/${S.runId}/outreach`,S.outreachRows);
-    for(const r of S.traceRows)await apiPost(`/session/${S.runId}/trace`,r);
+    await Promise.all(S.traceRows.map(r=>apiPost(`/session/${S.runId}/trace`,r)));
   }catch(e){console.warn('API write error:',e);}
   S.phase=5;S.status='complete';S.autoStatus=null;render();
   startPolling();
   refreshOpportunities();
   preloadPreviews(); // fire-and-forget — previews load lazily, don't block session completion
-  if(S.autoMode)await autoSendAll();
+  // autoSendAll is triggered manually by the user via "Send All" button, not auto-called
   // Schedule evaluation windows (Day 7 / 14 / 30)
   try{
     const sr=await fetch(`${API}/evaluate/schedule/${S.runId}`,{method:'POST'});

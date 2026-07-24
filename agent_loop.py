@@ -334,7 +334,7 @@ def _tool_query_members(measure_key, plan_key, gap_status_filter="open_or_border
             SELECT
                 g.member_gap_key, g.member_key, g.gap_status, g.days_open,
                 g.nba_propensity_score,
-                mb.age, mb.gender, mb.language_preference, mb.digital_literacy_segment,
+                mb.age_band, mb.gender, mb.language_preference, mb.digital_literacy_segment,
                 mb.socioeconomic_segment,
                 cp.preferred_channel, cp.email_opt_in, cp.sms_opt_in, cp.call_opt_in,
                 cp.do_not_contact
@@ -559,6 +559,9 @@ def _openrouter_request(messages: list, tools: list) -> dict:
     return resp.json()
 
 
+_MAX_TURNS = 8  # prevent runaway loops if the model keeps requesting tool calls
+
+
 def _run_loop(client, system_prompt: str, user_message: str, nba_run_id: str) -> dict:
     """Core while-tool_use loop using OpenRouter (OpenAI-compatible format)."""
     messages = [
@@ -567,8 +570,10 @@ def _run_loop(client, system_prompt: str, user_message: str, nba_run_id: str) ->
     ]
     tool_calls_made = []
     final_text = ""
+    turns = 0
 
-    while True:
+    while turns < _MAX_TURNS:
+        turns += 1
         data = _openrouter_request(messages, TOOLS)
 
         choice = data["choices"][0]

@@ -1922,7 +1922,7 @@ def send_email_gmail(to_email: str, subject: str, body: str) -> dict:
         msg.attach(MIMEText(body, 'plain'))
         msg.attach(MIMEText(html_body, 'html'))
 
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
             server.login(os.getenv('GMAIL_ADDRESS'), os.getenv('GMAIL_APP_PASSWORD'))
             server.send_message(msg)
 
