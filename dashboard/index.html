@@ -568,9 +568,14 @@ function pad2(n){return String(n).padStart(2,'0')}
 function nowIso(){return new Date().toISOString().split('.')[0]}
 
 /* ── API helpers ───────────────────────────────────────────────────── */
-async function apiGet(path){const r=await fetch(API+path);if(!r.ok)throw new Error(r.status);return r.json();}
+function _fetchWithTimeout(url,opts={},ms=15000){
+  const ctrl=new AbortController();
+  const id=setTimeout(()=>ctrl.abort(),ms);
+  return fetch(url,{...opts,signal:ctrl.signal}).finally(()=>clearTimeout(id));
+}
+async function apiGet(path){const r=await _fetchWithTimeout(API+path);if(!r.ok)throw new Error(r.status);return r.json();}
 async function apiPost(path,body){
-  const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const r=await _fetchWithTimeout(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!r.ok)throw new Error(r.status);return r.json();
 }
 
@@ -1052,44 +1057,53 @@ async function autoSendAll(){
   renderRight();
 }
 
+let _finalizing=false;
 async function finalizeSession(){
-  const tot=S.selCohorts.reduce((s,c)=>s+c.gaps.length,0);
-  const ts=nowIso();
-  S.traceRows.push(
-    {nba_run_id:S.runId,timestamp:ts,agent:'Outreach',step:'OUTREACH_PLAN_CREATED',
-      input_summary:`1 campaign × ${S.selCohorts.length} cohorts × ${tot} gaps`,
-      output_summary:`${S.outreachRows.length} planned contacts`,affected_population_count:tot},
-    {nba_run_id:S.runId,timestamp:ts,agent:'Outreach',step:'RUN_SUMMARY',
-      input_summary:`${S.selOpp.measure.measure_code} × ${S.selOpp.plan.plan_name} complete`,
-      output_summary:`${tot} gaps targeted; ${S.outreachRows.length} contacts planned; ${S.kpis.lift} avg lift`,
-      affected_population_count:tot}
-  );
-  const campRow={
-    campaign_id:S.campaignId,nba_run_id:S.runId,
-    measure_key:S.selOpp.measure_key,plan_key:S.selOpp.plan_key,
-    campaign_name:S.campaign.name,
-    target_cohort_ids:S.selCohorts.map(c=>c.id).join(';'),
-    channel_strategy:S.campaign.channelSum,frequency_plan:S.campaign.freqSum,
-    message_template_id:'TMPL_'+S.selOpp.measure.measure_code+'_PLAIN_V1',
-    incentive_strategy:S.campaign.incSum,created_timestamp:ts,
-  };
+  if(_finalizing)return; // prevent double-submit
+  _finalizing=true;
   try{
-    // Decisions and campaign in parallel, then outreach (bulk), then trace rows
-    await Promise.all([
-      ...S.decisionRows.map(r=>apiPost(`/session/${S.runId}/decision`,r)),
-      apiPost(`/session/${S.runId}/campaign`,campRow),
-    ]);
-    await apiPost(`/session/${S.runId}/outreach`,S.outreachRows);
-    await Promise.all(S.traceRows.map(r=>apiPost(`/session/${S.runId}/trace`,r)));
-  }catch(e){console.warn('API write error:',e);}
-  S.phase=5;S.status='complete';S.autoStatus=null;render();
+    const tot=S.selCohorts.reduce((s,c)=>s+c.gaps.length,0);
+    const ts=nowIso();
+    S.traceRows.push(
+      {nba_run_id:S.runId,timestamp:ts,agent:'Outreach',step:'OUTREACH_PLAN_CREATED',
+        input_summary:`1 campaign × ${S.selCohorts.length} cohorts × ${tot} gaps`,
+        output_summary:`${S.outreachRows.length} planned contacts`,affected_population_count:tot},
+      {nba_run_id:S.runId,timestamp:ts,agent:'Outreach',step:'RUN_SUMMARY',
+        input_summary:`${S.selOpp.measure.measure_code} × ${S.selOpp.plan.plan_name} complete`,
+        output_summary:`${tot} gaps targeted; ${S.outreachRows.length} contacts planned; ${S.kpis.lift} avg lift`,
+        affected_population_count:tot}
+    );
+    const campRow={
+      campaign_id:S.campaignId,nba_run_id:S.runId,
+      measure_key:S.selOpp.measure_key,plan_key:S.selOpp.plan_key,
+      campaign_name:S.campaign.name,
+      target_cohort_ids:S.selCohorts.map(c=>c.id).join(';'),
+      channel_strategy:S.campaign.channelSum,frequency_plan:S.campaign.freqSum,
+      message_template_id:'TMPL_'+S.selOpp.measure.measure_code+'_PLAIN_V1',
+      incentive_strategy:S.campaign.incSum,created_timestamp:ts,
+    };
+    try{
+      // Decisions and campaign in parallel, then outreach (bulk), then trace rows
+      // Each apiPost has a 15s AbortController timeout so no call can hang indefinitely
+      await Promise.all([
+        ...S.decisionRows.map(r=>apiPost(`/session/${S.runId}/decision`,r)),
+        apiPost(`/session/${S.runId}/campaign`,campRow),
+      ]);
+      await apiPost(`/session/${S.runId}/outreach`,S.outreachRows);
+      await Promise.all(S.traceRows.map(r=>apiPost(`/session/${S.runId}/trace`,r)));
+    }catch(e){console.warn('API write error (non-fatal):',e);}
+  }finally{
+    // ALWAYS transition to phase 5 even if API writes timed out or threw
+    S.phase=5;S.status='complete';S.autoStatus=null;render();
+    _finalizing=false;
+  }
   startPolling();
   refreshOpportunities();
-  preloadPreviews(); // fire-and-forget — previews load lazily, don't block session completion
+  preloadPreviews(); // fire-and-forget
   // autoSendAll is triggered manually by the user via "Send All" button, not auto-called
   // Schedule evaluation windows (Day 7 / 14 / 30)
   try{
-    const sr=await fetch(`${API}/evaluate/schedule/${S.runId}`,{method:'POST'});
+    const sr=await _fetchWithTimeout(`${API}/evaluate/schedule/${S.runId}`,{method:'POST'},8000);
     if(sr.ok){
       const sd=await sr.json();
       const dates=sd.schedule.map(s=>`Day ${s.evaluation_window}: ${s.scheduled_date}`).join(' · ');
