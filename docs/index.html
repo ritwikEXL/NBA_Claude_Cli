@@ -941,7 +941,7 @@ async function finalizeSession(){
   S.phase=5;S.status='complete';S.autoStatus=null;render();
   startPolling();
   refreshOpportunities();
-  await preloadPreviews();
+  preloadPreviews(); // fire-and-forget — previews load lazily, don't block session completion
   if(S.autoMode)await autoSendAll();
   // Schedule evaluation windows (Day 7 / 14 / 30)
   try{

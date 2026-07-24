@@ -1815,7 +1815,7 @@ def _generate_message_claude(channel: str, member: dict, gap: dict,
         f"Tone should be warm and encouraging.{lang_note}"
     )
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=15.0)
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=300,
