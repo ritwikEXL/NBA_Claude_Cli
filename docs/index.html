@@ -1943,6 +1943,7 @@ async function runSimulation(rate){
 
 const CONV_STATE_BADGE = {
   OUTREACH_SENT: {cls:'badge-gray',  label:'Outreach Sent'},
+  EMAIL_SENT:    {cls:'badge-blue',  label:'Email Sent'},
   AWAITING_DATE: {cls:'badge-amber', label:'Awaiting Date'},
   DATE_CONFIRMED:{cls:'badge-teal',  label:'Date Confirmed'},
   FOLLOW_UP_SENT:{cls:'badge-blue',  label:'Follow-up Sent'},
@@ -2159,7 +2160,7 @@ function renderConvSection(){
   const selRun=S.convSelectedRunId||runIds[0]||'';
   const visConvs=selRun?(S.convData[selRun]||[]):allConvs;
 
-  const stateOrder=['ESCALATED','FOLLOW_UP_SENT','AWAITING_DATE','DATE_CONFIRMED','OUTREACH_SENT','COMPLETED','DECLINED'];
+  const stateOrder=['ESCALATED','FOLLOW_UP_SENT','AWAITING_DATE','DATE_CONFIRMED','OUTREACH_SENT','EMAIL_SENT','COMPLETED','DECLINED'];
   const sorted=[...visConvs].sort((a,b)=>stateOrder.indexOf(a.conversation_state)-stateOrder.indexOf(b.conversation_state));
 
   const summary={

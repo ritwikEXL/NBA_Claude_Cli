@@ -2041,11 +2041,14 @@ def send_message(contact_id: str):
                WHERE contact_id = ?""",
             (new_status, message_text, sent_at, error_reason, contact_id),
         )
-        # Track WhatsApp conversations for reply handling
-        if success and channel_used == "WhatsApp":
+        # Track sent messages so the evaluation tab shows status for all channels
+        if success and channel_used in ("WhatsApp", "EMAIL"):
             mgk = contact.get("member_gap_key", "")
             run_id = contact.get("nba_run_id", "")
-            phone = TEST_SMS or ""
+            # For EMAIL use the test email address as the identifier; for WhatsApp use the phone
+            contact_identifier = (os.getenv("TEST_EMAIL", "") if channel_used == "EMAIL"
+                                  else (TEST_SMS or ""))
+            init_state = "EMAIL_SENT" if channel_used == "EMAIL" else "OUTREACH_SENT"
             conn.execute(
                 """INSERT OR IGNORE INTO whatsapp_conversations
                    (conversation_id, member_gap_key, contact_id, nba_run_id,
@@ -2053,8 +2056,8 @@ def send_message(contact_id: str):
                     conversation_state, created_timestamp, last_updated)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (f"CONV_{contact_id}", mgk, contact_id, run_id,
-                 phone, member.get("member_key",""), measure_name,
-                 "OUTREACH_SENT", sent_at, sent_at)
+                 contact_identifier, member.get("member_key",""), measure_name,
+                 init_state, sent_at, sent_at)
             )
 
     return {
