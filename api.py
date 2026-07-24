@@ -19,6 +19,9 @@ from typing import Any
 ssl._create_default_https_context = ssl._create_unverified_context
 
 import re
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import anthropic
 from pyngrok import ngrok as pyngrok_tunnel
 from dotenv import load_dotenv
@@ -1892,6 +1895,42 @@ def _resolve_channel(assigned_channel: str, member: dict) -> tuple[str, str | No
     return assigned_channel, None
 
 
+def send_email_gmail(to_email: str, subject: str, body: str) -> dict:
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = os.getenv('GMAIL_ADDRESS')
+        msg['To'] = to_email
+
+        html_body = f"""
+        <html><body>
+        <div style="font-family: Arial; max-width: 600px; margin: auto;">
+            <div style="background: #F15A22; padding: 20px; color: white;">
+                <h2>CareIntel Health Reminder</h2>
+            </div>
+            <div style="padding: 20px;">
+                {body.replace(chr(10), '<br>')}
+            </div>
+            <div style="padding: 20px; color: gray; font-size: 12px;">
+                This message is from your Medicare Advantage health plan.
+                To unsubscribe reply STOP.
+            </div>
+        </div>
+        </body></html>
+        """
+
+        msg.attach(MIMEText(body, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(os.getenv('GMAIL_ADDRESS'), os.getenv('GMAIL_APP_PASSWORD'))
+            server.send_message(msg)
+
+        return {"success": True, "channel": "email", "delivered_to": to_email, "provider": "Gmail SMTP"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def _send_whatsapp(to: str, body: str) -> dict:
     wa_from = os.getenv("TWILIO_WHATSAPP_NUMBER")
     wa_to   = "whatsapp:" + to
@@ -1954,19 +1993,31 @@ def send_message(contact_id: str):
             "status": "FAILED", "error": err, "override_note": override_note,
         }
 
-    # 4. Deliver via WhatsApp (demo mode — all channels routed through WhatsApp sandbox)
+    # 4. Deliver — EMAIL goes via Gmail SMTP, all other channels via WhatsApp sandbox
     delivered_to = None
     send_result = {}
     channel_used = None
     error_reason = None
     try:
-        channel_used = "WhatsApp"
-        delivered_to = "whatsapp:" + TEST_SMS
-        send_result = _send_whatsapp(TEST_SMS, message_text)
-        success = True
-        new_status = "SENT"
+        if channel.upper() == "EMAIL":
+            test_email = os.getenv("TEST_EMAIL", "")
+            subject = f"Health Reminder: {measure_name}"
+            send_result = send_email_gmail(test_email, subject, message_text)
+            if send_result.get("success"):
+                channel_used = "EMAIL"
+                delivered_to = test_email
+                success = True
+                new_status = "SENT"
+            else:
+                raise Exception(send_result.get("error", "Gmail send failed"))
+        else:
+            channel_used = "WhatsApp"
+            delivered_to = "whatsapp:" + TEST_SMS
+            send_result = _send_whatsapp(TEST_SMS, message_text)
+            success = True
+            new_status = "SENT"
     except Exception as e:
-        # Extract the most useful part of Twilio/SendGrid errors (FIX 2)
+        # Extract the most useful part of Twilio errors
         raw = str(e)
         if hasattr(e, 'msg'):
             raw = e.msg
@@ -2018,6 +2069,24 @@ def send_message(contact_id: str):
         "error": error_reason,
         "send_result": send_result,
     }
+
+
+# ── GET /test/email ──────────────────────────────────────────────────────────
+
+@app.get("/test/email")
+def test_email():
+    """Send a test email via Gmail SMTP to the TEST_EMAIL address."""
+    test_email = os.getenv("TEST_EMAIL", "")
+    if not test_email:
+        raise HTTPException(status_code=500, detail="TEST_EMAIL not configured in .env")
+    result = send_email_gmail(
+        to_email=test_email,
+        subject="CareIntel — Email Delivery Test",
+        body="This is a test message from CareIntel NBA.\n\nIf you received this, Gmail SMTP is working correctly.",
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=f"Gmail SMTP failed: {result.get('error')}")
+    return result
 
 
 # ── POST /send/all/{run_id} ───────────────────────────────────────────────────
