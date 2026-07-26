@@ -131,7 +131,7 @@ TOOLS = [
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max rows to return (default 200)."
+                    "description": "Max rows to return (default 50, max 100)."
                 }
             },
             "required": ["measure_key", "plan_key"]
@@ -322,7 +322,8 @@ def _tool_query_opportunities(measure_key=None, plan_key=None, min_open_gaps=1):
         conn.close()
 
 
-def _tool_query_members(measure_key, plan_key, gap_status_filter="open_or_borderline", limit=200):
+def _tool_query_members(measure_key, plan_key, gap_status_filter="open_or_borderline", limit=50):
+    limit = min(int(limit), 100)  # cap at 100 to keep AI context manageable
     conn = _db_conn()
     try:
         if gap_status_filter == "open_or_borderline":

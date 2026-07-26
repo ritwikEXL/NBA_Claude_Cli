@@ -938,6 +938,17 @@ async function confirmOpp(){
   catch(e){o.gaps=[];}
   S.selOpp=o;
   S.inScopeGaps=o.gaps.filter(g=>String(g.is_suppressed).toLowerCase()!=='true');
+  // Patch memberMap/chanMap from gap rows (gaps now include joined member+channel fields)
+  for(const g of S.inScopeGaps){
+    if(g.language_preference!==undefined){
+      S.memberMap[g.member_key]={...S.memberMap[g.member_key],...g};
+      S.chanMap[g.member_key]={
+        email_allowed:g.email_allowed,sms_allowed:g.sms_allowed,
+        call_allowed:g.call_allowed,preferred_channel:g.preferred_channel,
+        do_not_contact_flag:g.do_not_contact_flag,
+      };
+    }
+  }
   S.cohorts=generateCohorts(S.inScopeGaps,o.measure.measure_code||'');
   S.kpis.gaps=S.inScopeGaps.length;
   S.agentSt.opp='done';
@@ -1136,7 +1147,7 @@ async function autoModeRun(){
   // Phase 2 — Segmentation
   S.autoStatus='Segmentation Agent running — building member cohorts…';render();
   await delay(2000);if(S.autoAborted)return;
-  confirmCohorts(true);
+  confirmCohorts('both');
 
   // Phase 3 — Campaign
   S.autoStatus=`Campaign Design Agent running — selecting strategy for ${S.selCohorts.length} cohort(s)…`;render();
@@ -1397,6 +1408,10 @@ function renderHistoryDropdown(){
 
 /* ── Data Builders ─────────────────────────────────────────────────── */
 function buildOutputs(){
+  if(!S.selOpp||!S.selCohorts.length){
+    console.warn('buildOutputs: selOpp or selCohorts missing',{selOpp:S.selOpp,cohorts:S.selCohorts.length});
+    return;
+  }
   const today=new Date().toISOString().split('T')[0];
   const ctr=S.runId.split('_')[2];
   const mCode=S.selOpp.measure.measure_code;

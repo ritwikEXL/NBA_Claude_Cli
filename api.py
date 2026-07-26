@@ -1462,13 +1462,23 @@ def get_gaps():
 
 @app.get("/gaps/{measure_key}/{plan_key}")
 def get_gaps_by_measure_plan(measure_key: str, plan_key: str):
+    """Return up to 250 open/borderline gaps for a measure×plan, joined with member + channel data."""
     with get_db() as conn:
         rows = conn.execute("""
-            SELECT * FROM fact_member_gap
-            WHERE measure_key = ?
-              AND plan_key = ?
-              AND LOWER(gap_status) IN ('open', 'borderline')
-              AND LOWER(is_suppressed) != 'true'
+            SELECT g.*,
+                   mb.age_band, mb.gender, mb.language_preference,
+                   mb.digital_literacy_segment, mb.socioeconomic_segment,
+                   cp.email_allowed, cp.sms_allowed, cp.call_allowed,
+                   cp.preferred_channel, cp.do_not_contact_flag
+            FROM fact_member_gap g
+            JOIN dim_member mb ON mb.member_key = g.member_key
+            LEFT JOIN dim_member_channel_pref cp ON cp.member_key = g.member_key
+            WHERE g.measure_key = ?
+              AND g.plan_key = ?
+              AND LOWER(g.gap_status) IN ('open', 'borderline')
+              AND LOWER(g.is_suppressed) != 'true'
+            ORDER BY g.nba_propensity_score DESC
+            LIMIT 250
         """, (measure_key, plan_key)).fetchall()
     return rows_as_dicts(rows)
 
