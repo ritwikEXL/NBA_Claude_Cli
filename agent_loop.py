@@ -336,8 +336,8 @@ def _tool_query_members(measure_key, plan_key, gap_status_filter="open_or_border
                 g.nba_propensity_score,
                 mb.age_band, mb.gender, mb.language_preference, mb.digital_literacy_segment,
                 mb.socioeconomic_segment,
-                cp.preferred_channel, cp.email_opt_in, cp.sms_opt_in, cp.call_opt_in,
-                cp.do_not_contact
+                cp.preferred_channel, cp.email_allowed, cp.sms_allowed, cp.call_allowed,
+                cp.do_not_contact_flag
             FROM fact_member_gap g
             JOIN dim_member mb ON mb.member_key = g.member_key
             LEFT JOIN dim_member_channel_pref cp ON cp.member_key = g.member_key
@@ -408,7 +408,7 @@ def _tool_write_session_decision(
                     (nba_run_id, member_gap_key, measure_key, plan_key,
                      cohort_id, cohort_name, nba_action_type,
                      final_channel, final_incentive, priority_score,
-                     expected_gap_closure_lift, explanation_text, created_timestamp)
+                     expected_gap_closure_lift, explanation_text, decision_timestamp)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     nba_run_id, mgk, measure_key, plan_key,

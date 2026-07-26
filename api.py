@@ -2502,6 +2502,31 @@ def get_all_evaluations():
     }
 
 
+@app.post("/evaluate/schedule/{run_id}")
+def schedule_evaluation(run_id: str):
+    """Create evaluation schedule rows (Day 7 / 14 / 30) for a completed run."""
+    from datetime import date, timedelta
+    today = date.today()
+    windows = [7, 14, 30]
+    rows_written = 0
+    with get_db() as conn:
+        existing = {r[0] for r in conn.execute(
+            "SELECT evaluation_window FROM evaluation_schedule WHERE nba_run_id=?", (run_id,)
+        ).fetchall()}
+        for w in windows:
+            if w in existing:
+                continue
+            sched_date = str(today + timedelta(days=w))
+            conn.execute(
+                """INSERT INTO evaluation_schedule (nba_run_id, evaluation_window, scheduled_date, status)
+                   VALUES (?,?,?,'PENDING')""",
+                (run_id, w, sched_date)
+            )
+            rows_written += 1
+    schedule = [{"evaluation_window": w, "scheduled_date": str(today + timedelta(days=w))} for w in windows]
+    return {"run_id": run_id, "schedule": schedule, "rows_written": rows_written}
+
+
 @app.get("/evaluate/schedule/due")
 def get_due_evaluations():
     today_s = str(date.today())
