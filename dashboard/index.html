@@ -3119,6 +3119,14 @@ function renderS3(){
   </div>`;
 }
 
+function chLabel(ch){
+  const c=(ch||'').toUpperCase();
+  if(c==='EMAIL')return'WhatsApp (Email)';
+  if(c==='CALL')return'WhatsApp (Call Script)';
+  if(c.includes('SPANISH'))return'WhatsApp (Spanish)';
+  if(c.includes('MANDARIN'))return'WhatsApp (Mandarin)';
+  return'WhatsApp';
+}
 function renderS4(){
   if(S.step4Loading)return`<div class="step-content"><div class="step4-loading"><div class="spinner"></div>Generating outreach plan…</div></div>`;
   const byCh={};for(const r of S.outreachRows)byCh[r.channel]=(byCh[r.channel]||0)+1;
@@ -3164,14 +3172,6 @@ function renderRight(){
   }).join('');
   // Demo mode: all channels delivered via WhatsApp
   const chIcon=ch=>'🟢';
-  const chLabel=ch=>{
-    const c=(ch||'').toUpperCase();
-    if(c==='EMAIL')return'WhatsApp (Email)';
-    if(c==='CALL')return'WhatsApp (Call Script)';
-    if(c.includes('SPANISH'))return'WhatsApp (Spanish)';
-    if(c.includes('MANDARIN'))return'WhatsApp (Mandarin)';
-    return'WhatsApp';
-  };
   // All channel badges use a single WhatsApp style
   const chCls=()=>'ch-WA';
   const sentCount=S.outreachRows.filter(r=>S.sendState[r.contact_id]?.sent).length;
