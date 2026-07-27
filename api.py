@@ -2490,11 +2490,18 @@ def _run_evaluation(run_id: str) -> dict:
 
     return {
         "evaluation_id": eval_id,
+        "nba_run_id": run_id,
         "run_id": run_id,
         "campaign_id": camp_id,
         "evaluation_date": today_s,
         "evaluation_window": window,
         "measure_code": measure_code,
+        "measure_name": measure_name_val,
+        "plan_key": plan_key_val,
+        "plan_name": plan_name_val,
+        "outreach_date": outreach_date_val,
+        "star_rating_current": star_current,
+        "star_rating_target": star_target,
         "performance_status": perf_status,
         "total_members_contacted": total,
         "gaps_closed_actual": closed_actual,
@@ -2609,6 +2616,15 @@ def run_scheduled_evaluations():
 @app.post("/evaluate/{run_id}")
 def evaluate_run(run_id: str):
     return _run_evaluation(run_id)
+
+
+@app.delete("/evaluate/{run_id}")
+def delete_evaluation(run_id: str):
+    with get_db() as conn:
+        conn.execute("DELETE FROM campaign_evaluations WHERE nba_run_id=?", (run_id,))
+        conn.execute("DELETE FROM member_evaluations WHERE nba_run_id=?", (run_id,))
+        conn.execute("DELETE FROM evaluation_schedule WHERE nba_run_id=?", (run_id,))
+    return {"status": "deleted", "run_id": run_id}
 
 
 @app.get("/evaluate/{run_id}/latest")
@@ -3038,6 +3054,27 @@ def simulate_conversation(payload: dict):
             "SELECT * FROM whatsapp_conversations WHERE contact_id=? ORDER BY last_updated DESC LIMIT 1",
             (contact_id,)
         ).fetchone()
+        if not conv:
+            # Auto-initialize conversation from outreach plan row so simulate works before/after send
+            contact_row = conn.execute(
+                "SELECT * FROM fact_nba_outreach_plan WHERE contact_id=?", (contact_id,)
+            ).fetchone()
+            if not contact_row:
+                raise HTTPException(status_code=404, detail="No outreach contact found for this contact_id")
+            cr = dict(contact_row)
+            conn.execute(
+                """INSERT OR IGNORE INTO whatsapp_conversations
+                   (conversation_id, member_gap_key, contact_id, nba_run_id,
+                    member_phone, member_key, measure_name,
+                    conversation_state, created_timestamp, last_updated)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (f"CONV_{contact_id}", cr.get("member_gap_key",""), contact_id, cr.get("nba_run_id",""),
+                 TEST_SMS, cr.get("member_key",""), cr.get("measure_code","health screening"),
+                 "OUTREACH_SENT", now_iso, now_iso)
+            )
+            conv = conn.execute(
+                "SELECT * FROM whatsapp_conversations WHERE contact_id=? LIMIT 1", (contact_id,)
+            ).fetchone()
     if not conv:
         raise HTTPException(status_code=404, detail="No conversation found for this contact")
 

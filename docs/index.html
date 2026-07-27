@@ -968,20 +968,22 @@ async function finalizeSession(){
   startPolling();
   refreshOpportunities();
   preloadPreviews(); // fire-and-forget
-  // Schedule evaluation windows (Day 7 / 14 / 30) + trigger initial eval + navigate to eval tab
-  try{
-    const sr=await _fetchWithTimeout(`${API}/evaluate/schedule/${S.runId}`,{method:'POST'},8000);
-    if(sr.ok){
-      const sd=await sr.json();
-      const dates=sd.schedule.map(s=>`Day ${s.evaluation_window}: ${s.scheduled_date}`).join(' · ');
-      S.evalScheduledMsg=`Evaluation scheduled — this campaign will be automatically evaluated on ${dates}`;
-    }
-  }catch(e){S.evalScheduledMsg='';}
-  // Trigger initial evaluation so Evaluation tab has data immediately
-  try{ await triggerEval(S.runId); }catch(e){ console.warn('Initial eval trigger failed:',e); }
-  await loadEvalData();
-  S.tab='eval';
-  render();
+  // Navigate to eval tab immediately — don't block on eval computation
+  S.tab='eval';render();
+  // Background: schedule windows + trigger initial eval + reload eval data
+  (async()=>{
+    try{
+      const sr=await _fetchWithTimeout(`${API}/evaluate/schedule/${S.runId}`,{method:'POST'},8000);
+      if(sr.ok){
+        const sd=await sr.json();
+        const dates=sd.schedule.map(s=>`Day ${s.evaluation_window}: ${s.scheduled_date}`).join(' · ');
+        S.evalScheduledMsg=`Evaluation scheduled — this campaign will be automatically evaluated on ${dates}`;
+        renderEval();
+      }
+    }catch(e){S.evalScheduledMsg='';}
+    try{ await triggerEval(S.runId); }catch(e){ console.warn('Initial eval trigger failed:',e); }
+    await loadEvalData();
+  })();
 }
 
 /* ── Polling ───────────────────────────────────────────────────────── */
@@ -1624,6 +1626,15 @@ async function loadEvalData(){
   }
 }
 
+async function deleteEval(runId){
+  if(!confirm(`Delete evaluation for ${runId}? This removes all eval records for this run.`))return;
+  try{
+    await fetch(`${API}/evaluate/${runId}`,{method:'DELETE'});
+    if(S.evalData) S.evalData.campaigns=S.evalData.campaigns.filter(c=>c.nba_run_id!==runId);
+    renderEval();
+  }catch(e){console.error('deleteEval failed',e);}
+}
+
 // Re-evaluate a specific campaign; updates only that row in evalData
 async function triggerEval(runId){
   _evalLoadingMap[runId]=true;renderEval();
@@ -1633,11 +1644,21 @@ async function triggerEval(runId){
     // patch evalData.campaigns in-place so only this row changes
     if(S.evalData){
       const idx=S.evalData.campaigns.findIndex(c=>c.nba_run_id===runId);
+      // Spread existing row first so enriched fields (plan_name, measure_name, etc.) are preserved
+      const existing=idx>=0?S.evalData.campaigns[idx]:{};
       const patch={
+        ...existing,
         nba_run_id:runId,
         campaign_id:updated.campaign_id,
         evaluation_date:updated.evaluation_date,
         evaluation_window:updated.evaluation_window,
+        measure_code:updated.measure_code||existing.measure_code,
+        measure_name:updated.measure_name||existing.measure_name,
+        plan_key:updated.plan_key||existing.plan_key,
+        plan_name:updated.plan_name||existing.plan_name,
+        outreach_date:updated.outreach_date||existing.outreach_date,
+        star_rating_current:updated.star_rating_current??existing.star_rating_current,
+        star_rating_target:updated.star_rating_target??existing.star_rating_target,
         total_members_contacted:updated.total_members_contacted,
         gaps_closed_actual:updated.gaps_closed_actual,
         gaps_closed_expected:updated.gaps_closed_expected,
@@ -1867,7 +1888,10 @@ function renderEval(){
         <td style="padding:.5rem .75rem">${statusBadgeEval(c.performance_status)}</td>
         <td style="padding:.5rem .75rem">${_outcomeSummary(c.nba_run_id)}</td>
         <td style="padding:.5rem .75rem">
-          ${reEvalBtn}
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+            ${reEvalBtn}
+            <button style="font-size:.72rem;padding:.25rem .6rem;background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer" onclick="deleteEval('${c.nba_run_id}')">Delete</button>
+          </div>
           ${rowErr?`<div style="font-size:.68rem;color:var(--red);margin-top:.2rem">${rowErr}</div>`:''}
         </td>
       </tr>
