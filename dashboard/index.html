@@ -1810,20 +1810,41 @@ function renderEval(){
     </div>`).join('')}
   </div>`;
 
-  // Campaign performance table — 15 cols (added Measure + Plan)
-  const HEADERS=['Run ID','Measure','Plan / Opportunity','Window','Contacted','Closed (Act.)','Closed (Exp.)','Actual Rate','Exp. Rate ⓘ','Status','Stars Act.','Stars Proj.','Outcomes','Action'];
+  // Campaign performance table — enriched with outreach date, insurer, full measure name, star gap
+  const _insurer=name=>{if(!name)return'—';const w=name.trim().split(' ')[0];return w;};
+  const _starGap=(cur,tgt)=>{if(!cur||!tgt)return'';return`${cur}★ → ${tgt}★`;};
+  const _closureBar=(act,exp)=>{
+    const a=Math.round((act||0)*100),e=Math.round((exp||0)*100);
+    const pct=Math.min(a,100);
+    const color=a>=e?'var(--green)':a>=e*0.7?'var(--amber)':'var(--red)';
+    return`<div style="display:flex;align-items:center;gap:.4rem">
+      <div style="flex:1;min-width:60px;background:var(--g200);border-radius:4px;height:6px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
+      </div>
+      <span style="font-size:.8rem;font-weight:700;color:${color};min-width:2.5rem">${a}%</span>
+      <span style="font-size:.72rem;color:var(--g400)">/ ${e}%</span>
+    </div>`;
+  };
+  const HEADERS=[
+    {l:'Outreach Date',tip:''},
+    {l:'Insurer',tip:''},
+    {l:'Plan',tip:'Full plan name'},
+    {l:'Measure',tip:'HEDIS / Star measure targeted in this run'},
+    {l:'Eval Window',tip:'Day 7 = early signal · Day 14 = mid-point · Day 30 = final'},
+    {l:'Contacted',tip:'Total members who received an outreach message'},
+    {l:'Gaps Closed',tip:'Actual closed vs HEDIS benchmark expected'},
+    {l:'Closure Rate',tip:'Actual % vs expected HEDIS benchmark rate'},
+    {l:'Stars Gap',tip:'Current → Target star rating for this plan'},
+    {l:'Stars Impact',tip:'Projected Stars improvement from this campaign'},
+    {l:'Status',tip:''},
+    {l:'Outcomes',tip:''},
+    {l:'Action',tip:''},
+  ];
   const campTable=campaigns.length===0?`<p style="color:var(--g400);font-style:italic">No evaluated campaigns yet.</p>`:`
   <div style="overflow-x:auto">
   <table style="width:100%;border-collapse:collapse;font-size:.82rem">
     <thead><tr style="background:var(--g100);text-align:left">
-      ${HEADERS.map(h=>{
-        if(h==='Exp. Rate ⓘ'){
-          return `<th style="padding:.5rem .75rem;font-weight:600;color:var(--g800);border-bottom:2px solid var(--g200);white-space:nowrap;cursor:help"
-                      title="HEDIS benchmark closure rate for this measure and evaluation window.&#10;Source: NCQA national averages.&#10;&#10;Day 7: MAD 45% · SPC 40% · AFV 35% · CDC 25% · EED 15% · BCS 12% · COL 10%&#10;Day 14: 1.8× Day 7 rate&#10;Day 30: MAD 75% · SPC 70% · AFV 65% · CDC 50% · EED 35% · BCS 30% · COL 25%">
-                  Exp. Rate <span style="font-size:.7rem;color:var(--teal)">ⓘ</span></th>`;
-        }
-        return `<th style="padding:.5rem .75rem;font-weight:600;color:var(--g800);border-bottom:2px solid var(--g200);white-space:nowrap">${h}</th>`;
-      }).join('')}
+      ${HEADERS.map(h=>`<th style="padding:.5rem .75rem;font-weight:600;color:var(--g800);border-bottom:2px solid var(--g200);white-space:nowrap${h.tip?';cursor:help':''}" ${h.tip?`title="${h.tip}"`:''}>${h.l}</th>`).join('')}
     </tr></thead>
     <tbody>
     ${campaigns.map((c,i)=>{
@@ -1832,30 +1853,45 @@ function renderEval(){
       const reEvalBtn=isLoading
         ?`<button class="btn-send" style="font-size:.72rem;padding:.25rem .6rem" disabled><span class="loading-spinner" style="width:.8rem;height:.8rem;border-width:2px;display:inline-block;vertical-align:middle;margin-right:.25rem"></span>Evaluating…</button>`
         :`<button class="btn-send" style="font-size:.72rem;padding:.25rem .6rem" onclick="triggerEval('${c.nba_run_id}')">Re-Evaluate</button>`;
+      const insurer=_insurer(c.plan_name);
+      const outDate=c.outreach_date||c.nba_run_id.slice(4,12).replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3')||'—';
+      const measureFull=c.measure_name||c.measure_code||'—';
+      const starGap=_starGap(c.star_rating_current,c.star_rating_target);
       return `<tr style="border-bottom:1px solid var(--g200);background:${i%2?'var(--g50)':'var(--white)'}">
-        <td style="padding:.5rem .75rem;font-family:monospace;font-size:.78rem;color:var(--g600)">${c.nba_run_id}</td>
-        <td style="padding:.5rem .75rem;text-align:center"><span style="background:var(--teal-ll);color:var(--teal);font-weight:700;font-size:.75rem;padding:.15rem .45rem;border-radius:4px">${c.measure_code||'—'}</span></td>
-        <td style="padding:.5rem .75rem;font-size:.8rem;max-width:180px"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(c.plan_name||'').replace(/"/g,'&quot;')}">${c.plan_name||c.campaign_id||'—'}</div></td>
-        <td style="padding:.5rem .75rem;text-align:center">Day ${c.evaluation_window}</td>
-        <td style="padding:.5rem .75rem;text-align:center">${c.total_members_contacted}</td>
-        <td style="padding:.5rem .75rem;text-align:center;font-weight:600">${c.gaps_closed_actual}</td>
-        <td style="padding:.5rem .75rem;text-align:center">${c.gaps_closed_expected}</td>
-        <td style="padding:.5rem .75rem;text-align:center;font-weight:600">${Math.round((c.actual_closure_rate||0)*100)}%</td>
-        <td style="padding:.5rem .75rem;text-align:center;cursor:help"
-            title="${c.measure_code?`Based on ${c.measure_code} HEDIS benchmark for day ${c.evaluation_window} outreach. Source: NCQA national averages.`:''}">
-          ${Math.round((c.expected_closure_rate||0)*100)}%
-          ${c.measure_code?`<span style="display:block;font-size:.65rem;color:var(--g400)">${c.measure_code}</span>`:''}
+        <td style="padding:.5rem .75rem;white-space:nowrap">
+          <div style="font-weight:600;font-size:.82rem">${outDate}</div>
+          <div style="font-size:.68rem;color:var(--g400);font-family:monospace">${c.nba_run_id}</div>
+        </td>
+        <td style="padding:.5rem .75rem;font-weight:700;font-size:.85rem">${insurer}</td>
+        <td style="padding:.5rem .75rem;max-width:200px">
+          <div style="font-weight:600;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(c.plan_name||'').replace(/"/g,'&quot;')}">${c.plan_name||'—'}</div>
+        </td>
+        <td style="padding:.5rem .75rem;min-width:180px">
+          <div style="font-weight:600;font-size:.8rem">${measureFull}</div>
+          <span style="background:var(--teal-ll);color:var(--teal);font-weight:700;font-size:.68rem;padding:.1rem .35rem;border-radius:3px;margin-top:.2rem;display:inline-block">${c.measure_code||''}</span>
+        </td>
+        <td style="padding:.5rem .75rem;text-align:center;white-space:nowrap">
+          <span style="background:var(--g100);border:1px solid var(--g200);border-radius:4px;padding:.2rem .5rem;font-size:.78rem;font-weight:600">Day ${c.evaluation_window}</span>
+        </td>
+        <td style="padding:.5rem .75rem;text-align:center;font-size:.9rem;font-weight:700">${c.total_members_contacted}</td>
+        <td style="padding:.5rem .75rem;text-align:center;white-space:nowrap">
+          <span style="font-weight:700;font-size:.9rem">${c.gaps_closed_actual}</span>
+          <span style="color:var(--g400);font-size:.78rem"> / ${c.gaps_closed_expected} exp.</span>
+        </td>
+        <td style="padding:.5rem .75rem;min-width:130px">${_closureBar(c.actual_closure_rate,c.expected_closure_rate)}</td>
+        <td style="padding:.5rem .75rem;text-align:center;white-space:nowrap;font-size:.82rem;color:var(--g600)">${starGap}</td>
+        <td style="padding:.5rem .75rem;text-align:center">
+          <div style="font-weight:700;color:var(--teal);font-size:.9rem">+${(c.stars_impact_projected||0).toFixed(4)}</div>
+          <div style="font-size:.68rem;color:var(--g400)">actual: +${(c.stars_impact_actual||0).toFixed(4)}</div>
         </td>
         <td style="padding:.5rem .75rem">${statusBadgeEval(c.performance_status)}</td>
-        <td style="padding:.5rem .75rem;text-align:center">${c.stars_impact_actual??'—'}</td>
-        <td style="padding:.5rem .75rem;text-align:center">${c.stars_impact_projected??'—'}</td>
         <td style="padding:.5rem .75rem">${_outcomeSummary(c.nba_run_id)}</td>
         <td style="padding:.5rem .75rem">
           ${reEvalBtn}
           ${rowErr?`<div style="font-size:.68rem;color:var(--red);margin-top:.2rem">${rowErr}</div>`:''}
         </td>
       </tr>
-      ${S.evalSelectedRun===c.nba_run_id&&S.evalMemberRows.length?`<tr><td colspan="15" style="padding:.75rem 1rem;background:var(--teal-lll)">
+      ${S.evalSelectedRun===c.nba_run_id&&S.evalMemberRows.length?`<tr><td colspan="13" style="padding:.75rem 1rem;background:var(--teal-lll)">
         <div style="font-weight:600;margin-bottom:.5rem;color:var(--teal)">Member-Level Actions — ${c.nba_run_id}</div>
         <table style="width:100%;border-collapse:collapse;font-size:.78rem">
           <thead><tr style="background:var(--teal-ll)">${['Member','WhatsApp','Gap Key','Sent Date','Gap Status','Days','Responded','Recommended Action','Reason','Follow-up','Record Outcome'].map(h=>`<th style="padding:.3rem .6rem;font-weight:600;text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead>

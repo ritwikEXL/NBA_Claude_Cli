@@ -120,6 +120,10 @@ with get_db() as _mc:
     for _col in [
         "ALTER TABLE campaign_evaluations ADD COLUMN plan_key TEXT DEFAULT ''",
         "ALTER TABLE campaign_evaluations ADD COLUMN plan_name TEXT DEFAULT ''",
+        "ALTER TABLE campaign_evaluations ADD COLUMN measure_name TEXT DEFAULT ''",
+        "ALTER TABLE campaign_evaluations ADD COLUMN outreach_date TEXT DEFAULT ''",
+        "ALTER TABLE campaign_evaluations ADD COLUMN star_rating_current REAL DEFAULT 0",
+        "ALTER TABLE campaign_evaluations ADD COLUMN star_rating_target REAL DEFAULT 0",
         "ALTER TABLE dim_plan_contract ADD COLUMN plan_annual_revenue REAL DEFAULT 0",
         "ALTER TABLE dim_plan_contract ADD COLUMN total_members INTEGER DEFAULT 0",
         "ALTER TABLE dim_plan_contract ADD COLUMN plan_pmpm_monthly REAL DEFAULT 1100",
@@ -2329,13 +2333,30 @@ def _run_evaluation(run_id: str) -> dict:
         _PLAN_MEMBERS_BY_SEGMENT = {"MAPD": 500, "DSNP": 300, "MA-only": 400}
 
         plan_row = conn.execute(
-            """SELECT p.segment, p.plan_name, p.plan_key FROM dim_nba_campaign c
+            """SELECT p.segment, p.plan_name, p.plan_key,
+                      p.star_rating_current, p.star_rating_target
+               FROM dim_nba_campaign c
                LEFT JOIN dim_plan_contract p ON p.plan_key = c.plan_key
                WHERE c.nba_run_id = ? LIMIT 1""", (run_id,)
         ).fetchone()
         plan_segment = (plan_row["segment"] if plan_row else None) or "MAPD"
         plan_name_val = (plan_row["plan_name"] if plan_row else None) or ""
         plan_key_val  = (plan_row["plan_key"]  if plan_row else None) or ""
+        star_current  = float(plan_row["star_rating_current"] if plan_row else 0) or 0
+        star_target   = float(plan_row["star_rating_target"]  if plan_row else 0) or 0
+
+        # Full measure name from dim_measure
+        measure_name_row = conn.execute(
+            "SELECT measure_name FROM dim_measure WHERE measure_code = ?", (measure_code,)
+        ).fetchone()
+        measure_name_val = (measure_name_row["measure_name"] if measure_name_row else None) or measure_code
+
+        # Outreach date — derive from run_id (RUN_YYYYMMDD_HHMMSS) or earliest sent_at
+        outreach_date_val = ""
+        try:
+            outreach_date_val = f"{run_id[4:8]}-{run_id[8:10]}-{run_id[10:12]}"
+        except Exception:
+            outreach_date_val = str(min((c["sent_at"] or today_s)[:10] for c in contacts))
         plan_total   = _PLAN_MEMBERS_BY_SEGMENT.get(plan_segment, 450)
 
         elig_rate  = _ELIGIBILITY_RATE.get(measure_code, 0.30)
@@ -2371,13 +2392,15 @@ def _run_evaluation(run_id: str) -> dict:
         conn.execute(
             """INSERT OR REPLACE INTO campaign_evaluations
                (evaluation_id, nba_run_id, campaign_id, evaluation_date, evaluation_window,
-                measure_code, plan_key, plan_name,
+                measure_code, measure_name, plan_key, plan_name,
+                outreach_date, star_rating_current, star_rating_target,
                 total_members_contacted, gaps_closed_actual, gaps_closed_expected,
                 actual_closure_rate, expected_closure_rate, performance_status,
                 stars_impact_actual, stars_impact_projected, executive_summary, created_timestamp)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (eval_id, run_id, camp_id, today_s, window,
-             measure_code, plan_key_val, plan_name_val,
+             measure_code, measure_name_val, plan_key_val, plan_name_val,
+             outreach_date_val, star_current, star_target,
              total, closed_actual, exp_closed, actual_rate, exp_rate, perf_status,
              stars_actual, stars_proj, summary, now_iso)
         )
