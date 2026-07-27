@@ -118,6 +118,8 @@ with get_db() as _mc:
     except Exception:
         pass
     for _col in [
+        "ALTER TABLE campaign_evaluations ADD COLUMN plan_key TEXT DEFAULT ''",
+        "ALTER TABLE campaign_evaluations ADD COLUMN plan_name TEXT DEFAULT ''",
         "ALTER TABLE dim_plan_contract ADD COLUMN plan_annual_revenue REAL DEFAULT 0",
         "ALTER TABLE dim_plan_contract ADD COLUMN total_members INTEGER DEFAULT 0",
         "ALTER TABLE dim_plan_contract ADD COLUMN plan_pmpm_monthly REAL DEFAULT 1100",
@@ -2013,6 +2015,10 @@ def send_message(contact_id: str):
     try:
         if channel.upper() == "EMAIL":
             test_email = os.getenv("TEST_EMAIL", "")
+            if not test_email:
+                raise Exception("TEST_EMAIL not configured in .env — email delivery disabled")
+            if not os.getenv("GMAIL_ADDRESS") or not os.getenv("GMAIL_APP_PASSWORD"):
+                raise Exception("GMAIL_ADDRESS or GMAIL_APP_PASSWORD not configured in .env")
             subject = f"Health Reminder: {measure_name}"
             send_result = send_email_gmail(test_email, subject, message_text)
             if send_result.get("success"):
@@ -2251,11 +2257,11 @@ def _run_evaluation(run_id: str) -> dict:
             LEFT JOIN dim_member m ON m.member_key = g.member_key
             LEFT JOIN dim_member_channel_pref p ON p.member_key = g.member_key
             WHERE o.nba_run_id = ?
-              AND o.status IN ('SENT','SCHEDULED','COMPLETED')
+              AND o.status IN ('SENT','SCHEDULED','COMPLETED','PLANNED')
         """, (run_id,)).fetchall()
 
         if not contacts:
-            raise HTTPException(status_code=404, detail=f"No sent contacts for run {run_id}")
+            raise HTTPException(status_code=404, detail=f"No contacts found for run {run_id}")
 
         # Determine evaluation window from first sent date
         first_sent_str = min((c["sent_at"] or today_s) for c in contacts)
@@ -2323,11 +2329,13 @@ def _run_evaluation(run_id: str) -> dict:
         _PLAN_MEMBERS_BY_SEGMENT = {"MAPD": 500, "DSNP": 300, "MA-only": 400}
 
         plan_row = conn.execute(
-            """SELECT p.segment FROM dim_nba_campaign c
+            """SELECT p.segment, p.plan_name, p.plan_key FROM dim_nba_campaign c
                LEFT JOIN dim_plan_contract p ON p.plan_key = c.plan_key
                WHERE c.nba_run_id = ? LIMIT 1""", (run_id,)
         ).fetchone()
         plan_segment = (plan_row["segment"] if plan_row else None) or "MAPD"
+        plan_name_val = (plan_row["plan_name"] if plan_row else None) or ""
+        plan_key_val  = (plan_row["plan_key"]  if plan_row else None) or ""
         plan_total   = _PLAN_MEMBERS_BY_SEGMENT.get(plan_segment, 450)
 
         elig_rate  = _ELIGIBILITY_RATE.get(measure_code, 0.30)
@@ -2363,13 +2371,13 @@ def _run_evaluation(run_id: str) -> dict:
         conn.execute(
             """INSERT OR REPLACE INTO campaign_evaluations
                (evaluation_id, nba_run_id, campaign_id, evaluation_date, evaluation_window,
-                measure_code,
+                measure_code, plan_key, plan_name,
                 total_members_contacted, gaps_closed_actual, gaps_closed_expected,
                 actual_closure_rate, expected_closure_rate, performance_status,
                 stars_impact_actual, stars_impact_projected, executive_summary, created_timestamp)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (eval_id, run_id, camp_id, today_s, window,
-             measure_code,
+             measure_code, plan_key_val, plan_name_val,
              total, closed_actual, exp_closed, actual_rate, exp_rate, perf_status,
              stars_actual, stars_proj, summary, now_iso)
         )

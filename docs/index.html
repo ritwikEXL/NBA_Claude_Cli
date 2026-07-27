@@ -968,8 +968,7 @@ async function finalizeSession(){
   startPolling();
   refreshOpportunities();
   preloadPreviews(); // fire-and-forget
-  // autoSendAll is triggered manually by the user via "Send All" button, not auto-called
-  // Schedule evaluation windows (Day 7 / 14 / 30)
+  // Schedule evaluation windows (Day 7 / 14 / 30) + trigger initial eval + navigate to eval tab
   try{
     const sr=await _fetchWithTimeout(`${API}/evaluate/schedule/${S.runId}`,{method:'POST'},8000);
     if(sr.ok){
@@ -978,6 +977,10 @@ async function finalizeSession(){
       S.evalScheduledMsg=`Evaluation scheduled — this campaign will be automatically evaluated on ${dates}`;
     }
   }catch(e){S.evalScheduledMsg='';}
+  // Trigger initial evaluation so Evaluation tab has data immediately
+  try{ await triggerEval(S.runId); }catch(e){ console.warn('Initial eval trigger failed:',e); }
+  await loadEvalData();
+  S.tab='eval';
   render();
 }
 
@@ -1787,8 +1790,8 @@ function renderEval(){
     </div>`).join('')}
   </div>`;
 
-  // Campaign performance table — 13 cols now (added Outcomes)
-  const HEADERS=['Run ID','Campaign','Window','Contacted','Closed (Act.)','Closed (Exp.)','Actual Rate','Exp. Rate ⓘ','Status','Stars Act.','Stars Proj.','Outcomes','Action'];
+  // Campaign performance table — 15 cols (added Measure + Plan)
+  const HEADERS=['Run ID','Measure','Plan / Opportunity','Window','Contacted','Closed (Act.)','Closed (Exp.)','Actual Rate','Exp. Rate ⓘ','Status','Stars Act.','Stars Proj.','Outcomes','Action'];
   const campTable=campaigns.length===0?`<p style="color:var(--g400);font-style:italic">No evaluated campaigns yet.</p>`:`
   <div style="overflow-x:auto">
   <table style="width:100%;border-collapse:collapse;font-size:.82rem">
@@ -1811,7 +1814,8 @@ function renderEval(){
         :`<button class="btn-send" style="font-size:.72rem;padding:.25rem .6rem" onclick="triggerEval('${c.nba_run_id}')">Re-Evaluate</button>`;
       return `<tr style="border-bottom:1px solid var(--g200);background:${i%2?'var(--g50)':'var(--white)'}">
         <td style="padding:.5rem .75rem;font-family:monospace;font-size:.78rem;color:var(--g600)">${c.nba_run_id}</td>
-        <td style="padding:.5rem .75rem;font-weight:500">${c.campaign_id||'—'}</td>
+        <td style="padding:.5rem .75rem;text-align:center"><span style="background:var(--teal-ll);color:var(--teal);font-weight:700;font-size:.75rem;padding:.15rem .45rem;border-radius:4px">${c.measure_code||'—'}</span></td>
+        <td style="padding:.5rem .75rem;font-size:.8rem;max-width:180px"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(c.plan_name||'').replace(/"/g,'&quot;')}">${c.plan_name||c.campaign_id||'—'}</div></td>
         <td style="padding:.5rem .75rem;text-align:center">Day ${c.evaluation_window}</td>
         <td style="padding:.5rem .75rem;text-align:center">${c.total_members_contacted}</td>
         <td style="padding:.5rem .75rem;text-align:center;font-weight:600">${c.gaps_closed_actual}</td>
@@ -1831,7 +1835,7 @@ function renderEval(){
           ${rowErr?`<div style="font-size:.68rem;color:var(--red);margin-top:.2rem">${rowErr}</div>`:''}
         </td>
       </tr>
-      ${S.evalSelectedRun===c.nba_run_id&&S.evalMemberRows.length?`<tr><td colspan="13" style="padding:.75rem 1rem;background:var(--teal-lll)">
+      ${S.evalSelectedRun===c.nba_run_id&&S.evalMemberRows.length?`<tr><td colspan="15" style="padding:.75rem 1rem;background:var(--teal-lll)">
         <div style="font-weight:600;margin-bottom:.5rem;color:var(--teal)">Member-Level Actions — ${c.nba_run_id}</div>
         <table style="width:100%;border-collapse:collapse;font-size:.78rem">
           <thead><tr style="background:var(--teal-ll)">${['Member','WhatsApp','Gap Key','Sent Date','Gap Status','Days','Responded','Recommended Action','Reason','Follow-up','Record Outcome'].map(h=>`<th style="padding:.3rem .6rem;font-weight:600;text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
@@ -1850,7 +1854,7 @@ function renderEval(){
           </tr>`).join('')}</tbody>
         </table>
       </td></tr>`:''}
-      <tr><td colspan="13" style="padding:.35rem .75rem;background:var(--teal-lll)">
+      <tr><td colspan="15" style="padding:.35rem .75rem;background:var(--teal-lll)">
         <button style="font-size:.75rem;color:var(--teal);background:none;border:none;cursor:pointer;text-decoration:underline" onclick="toggleMemberEval('${c.nba_run_id}')">
           ${S.evalSelectedRun===c.nba_run_id&&S.evalMemberRows.length?'▲ Hide member detail':'▼ Show member detail'}
         </button>
@@ -3247,9 +3251,12 @@ function renderRight(){
 
   const manualLabel=!S.autoMode&&S.outreachRows.length&&S.phase>=5
     ?`<p class="outreach-manual-label">Review your outreach plan below. Click <strong>Send All</strong> when ready to deliver messages.</p>`:'';
+  const suppressedCount=S.outreachRows.filter(r=>(S.sendState[r.contact_id]?.suppressed)||(r.status==='SUPPRESSED'&&!S.sendState[r.contact_id]?.sent)).length;
+  const failedCount=S.outreachRows.filter(r=>S.sendState[r.contact_id]?.failed).length;
+  const sendSummary=sentCount>0?`<span class="send-count-badge">✓ ${sentCount} sent${suppressedCount?` · ${suppressedCount} suppressed (DNC/no consent)`:''}${failedCount?` · ${failedCount} failed`:''}</span>`:'';
   const sendAllBtn=S.outreachRows.length&&!S.autoMode?`<button class="btn-send-all" data-action="send-all" ${S.sendAllInProgress?'disabled':''}>
     ${S.sendAllInProgress?'Sending…':'Send All'}
-  </button>${sentCount>0?`<span class="send-count-badge">✓ ${sentCount} / ${S.outreachRows.length} sent</span>`:''}`:'';
+  </button>${sendSummary}`:'';
 
   const trcRows=S.traceRows.length?S.traceRows.map((r,i)=>`<tr class="${i>=S.lastTraceSeen?'trace-new':''}">
     <td><code style="font-size:.69rem">${r.timestamp?String(r.timestamp).substring(11,19):'—'}</code></td>
