@@ -1581,6 +1581,8 @@ function renderNav(){
   else if(S.status==='active'){dot.className='status-dot active';txt.textContent='Session Active';badge.className='run-id-badge visible';badge.textContent=S.runId||'';}
   else{dot.className='status-dot';dot.style.background='#86EFAC';txt.textContent='Session Complete';badge.className='run-id-badge visible';badge.textContent=S.runId||'';}
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.val===S.tab));
+  // Clear any inline display style set by launchCampaign so CSS classes take precedence
+  document.querySelectorAll('.view').forEach(v=>v.style.display='');
   document.getElementById('view-opp').classList.toggle('active',S.tab==='opp');
   document.getElementById('view-eval').classList.toggle('active',S.tab==='eval');
   document.getElementById('view-run').classList.toggle('active',S.tab==='run');
