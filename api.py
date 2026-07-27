@@ -1009,8 +1009,10 @@ def get_template_plans():
     rows = [
         "plan_id,plan_name,region,segment,current_star_rating,target_star_rating,annual_revenue,total_members",
         "P001,Aetna Medicare Choice PPO (Northeast),Northeast,MAPD,3.5,4.0,450000000,45000",
-        "P002,Aetna Medicare Premier PPO (Southeast),Southeast,MAPD,3.8,4.5,380000000,38000",
-        "P003,Aetna Medicare DSNP Community (Midwest),Midwest,DSNP,3.0,3.5,280000000,28000",
+        "P002,Aetna Medicare Premier PPO (Southeast),Southeast,MAPD,4.0,4.5,380000000,38000",
+        "P003,Aetna Medicare DSNP Community (Midwest),Midwest,DSNP,3.0,4.0,280000000,28000",
+        "P004,UHC Medicare Advantage Value (West),West,MAPD,4.5,5.0,520000000,52000",
+        "P005,UHC Medicare Signature PPO (West),West,MAPD,2.5,3.0,210000000,21000",
     ]
     content = "\n".join(rows)
     return Response(

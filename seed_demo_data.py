@@ -302,10 +302,10 @@ print("[seed] Measures, benchmarks, costs seeded")
 
 PLANS = [
     ("P001", "Aetna Medicare Choice PPO (Northeast)",    "H1234", "Northeast", "MAPD", 3.5, 4.0, 350_000_000, 520, 1120),
-    ("P002", "Aetna Medicare Premier PPO (Southeast)",   "H1235", "Southeast", "MAPD", 3.8, 4.5, 420_000_000, 480, 1180),
-    ("P003", "Aetna Medicare DSNP Community (Midwest)",  "H1236", "Midwest",   "DSNP", 3.0, 3.5, 180_000_000, 310, 980),
-    ("P004", "UHC Medicare Advantage Value (West)",      "H5678", "West",      "MAPD", 3.5, 4.0, 290_000_000, 430, 1050),
-    ("P005", "UHC Medicare Signature PPO (West)",        "H5679", "West",      "MAPD", 2.5, 3.5, 260_000_000, 390, 1080),
+    ("P002", "Aetna Medicare Premier PPO (Southeast)",   "H1235", "Southeast", "MAPD", 4.0, 4.5, 420_000_000, 480, 1180),
+    ("P003", "Aetna Medicare DSNP Community (Midwest)",  "H1236", "Midwest",   "DSNP", 3.0, 4.0, 180_000_000, 310, 980),
+    ("P004", "UHC Medicare Advantage Value (West)",      "H5678", "West",      "MAPD", 4.5, 5.0, 290_000_000, 430, 1050),
+    ("P005", "UHC Medicare Signature PPO (West)",        "H5679", "West",      "MAPD", 2.5, 3.0, 260_000_000, 390, 1080),
 ]
 
 for p in PLANS:
