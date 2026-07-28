@@ -2255,7 +2255,7 @@ function renderConvSection(){
   });
 
   const runIds=[...new Set(campaigns.map(c=>c.nba_run_id))];
-  const selRun=S.convSelectedRunId||runIds[0]||'';
+  const selRun=S.convSelectedRunId||runIds[runIds.length-1]||'';
   const visConvs=selRun?(S.convData[selRun]||[]):allConvs;
 
   const stateOrder=['ESCALATED','FOLLOW_UP_SENT','AWAITING_DATE','DATE_CONFIRMED','OUTREACH_SENT','EMAIL_SENT','COMPLETED','DECLINED'];
