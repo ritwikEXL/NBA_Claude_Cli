@@ -2897,8 +2897,8 @@ async def whatsapp_webhook(request: Request):
 
     reply_msg = ""
 
-    # ── OUTREACH_SENT ──────────────────────────────────────────────────────────
-    if state == "OUTREACH_SENT":
+    # ── OUTREACH_SENT / initial channel states ────────────────────────────────
+    if state in ("OUTREACH_SENT", "SMS_SENT", "CALL_SENT", "EMAIL_SENT"):
         if _contains_any(body_raw, _STOP_WORDS):
             with get_db() as conn:
                 member_key = conv.get("member_key","")
@@ -3110,7 +3110,8 @@ def simulate_conversation(payload: dict):
     gap_closed    = False
     eval_triggered = False
 
-    if state == "OUTREACH_SENT":
+    # Treat all initial-contact states the same as OUTREACH_SENT
+    if state in ("OUTREACH_SENT", "SMS_SENT", "CALL_SENT", "EMAIL_SENT"):
         if _contains_any(body_raw, _YES_WORDS):
             with get_db() as conn:
                 conn.execute(
