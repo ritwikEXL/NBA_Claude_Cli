@@ -3624,7 +3624,7 @@ async function renderDataSources() {
         <div class="ds-drop-icon">📂</div>
         <p style="font-size:.85rem;color:var(--g600);margin:.25rem 0">Drag &amp; drop your CSV file here</p>
         <p style="font-size:.76rem;color:var(--g400)">or <span style="color:var(--teal);cursor:pointer;text-decoration:underline">browse files</span></p>
-        <input type="file" id="file-input-main" accept=".csv" style="display:none" onchange="dsHandleFileMain(this.files[0])">
+        <input type="file" id="file-input-main" accept=".csv,.xlsx" style="display:none" onchange="dsHandleFileMain(this.files[0])">
         <p style="font-size:.7rem;color:var(--g300);margin-top:.4rem">Accepts: .csv · Max 50MB</p>
       </div>
 
@@ -3793,7 +3793,7 @@ function dsRenderModalBody() {
         ondrop="dsHandleDrop(event)">
         <div class="ds-drop-icon">📁</div>
         <div class="ds-drop-hint">Drag & drop your CSV here or <strong>click to browse</strong></div>
-        <input type="file" accept=".csv" style="display:none" id="ds-file-input" onchange="dsHandleFile(this.files[0])">
+        <input type="file" accept=".csv,.xlsx" style="display:none" id="ds-file-input" onchange="dsHandleFile(this.files[0])">
       </div>
       ${DS.file ? `<div class="ds-file-chosen">✔ ${DS.file.name} (${(DS.file.size/1024).toFixed(1)} KB)</div>` : ''}
     </div>

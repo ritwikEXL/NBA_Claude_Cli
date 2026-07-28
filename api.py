@@ -3540,6 +3540,63 @@ def _ingest_csv(content: bytes, filename: str) -> dict:
     return {"status": "ok", "table": table, "rows_loaded": inserted, "filename": filename}
 
 
+def _ingest_xlsx(content: bytes, filename: str) -> dict:
+    """Parse an Excel workbook. Each sheet is treated as a CSV-equivalent — auto-detected and upserted."""
+    try:
+        import openpyxl
+    except ImportError:
+        return {"status": "error", "message": "openpyxl not installed — cannot parse .xlsx files"}
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception as e:
+        return {"status": "error", "message": f"Cannot open Excel file: {e}"}
+
+    results = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            continue
+        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+        if not any(headers):
+            continue
+        table = _detect_table(headers)
+        if not table:
+            results.append({"sheet": sheet_name, "status": "skipped", "reason": f"No matching table for columns: {headers[:8]}"})
+            continue
+
+        data_rows = rows[1:]
+        if not data_rows:
+            results.append({"sheet": sheet_name, "status": "skipped", "reason": "No data rows"})
+            continue
+
+        cols = [h for h in headers if h]
+        col_count = len(cols)
+        placeholders = ",".join(["?" for _ in cols])
+        col_list = ",".join(cols)
+
+        with get_db() as conn:
+            conn.execute(f"DELETE FROM {table}")
+            inserted = 0
+            for row in data_rows:
+                vals = [str(v) if v is not None else None for v in row[:col_count]]
+                if all(v is None for v in vals):
+                    continue
+                try:
+                    conn.execute(f"INSERT OR REPLACE INTO {table} ({col_list}) VALUES ({placeholders})", vals)
+                    inserted += 1
+                except Exception:
+                    pass
+        results.append({"sheet": sheet_name, "status": "ok", "table": table, "rows_loaded": inserted})
+
+    wb.close()
+    loaded = [r for r in results if r.get("status") == "ok"]
+    if not loaded:
+        return {"status": "error", "message": f"No sheets matched known tables. Sheets tried: {wb.sheetnames}. Details: {results}"}
+    return {"status": "ok", "filename": filename, "sheets": results}
+
+
 def _ingest_sqlite(content: bytes, filename: str) -> dict:
     """Copy matching tables from an uploaded SQLite DB into careintel.db."""
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -3585,6 +3642,8 @@ def _bg_ingest_and_analyze(files_data: list[tuple[str, bytes]], run_id: str):
     for filename, content in files_data:
         if filename.lower().endswith(".db") or filename.lower().endswith(".sqlite") or filename.lower().endswith(".sqlite3"):
             r = _ingest_sqlite(content, filename)
+        elif filename.lower().endswith(".xlsx") or filename.lower().endswith(".xls"):
+            r = _ingest_xlsx(content, filename)
         else:
             r = _ingest_csv(content, filename)
         results.append(r)

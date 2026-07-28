@@ -48,6 +48,8 @@ output/*.*
 
 # Database (seeded at startup on Render)
 careintel.db
+careintel.db-shm
+careintel.db-wal
 
 # Cloudflare tunnel binary
 cloudflared.exe
