@@ -105,6 +105,32 @@ def _ensure_tables():
             scheduled_date TEXT, evaluation_window INTEGER, status TEXT DEFAULT 'PENDING',
             created_timestamp TEXT
         );
+        CREATE TABLE IF NOT EXISTS fact_nba_trace (
+            nba_run_id TEXT, timestamp TEXT, agent TEXT, step TEXT,
+            input_summary TEXT, output_summary TEXT, affected_population_count INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS dim_nba_campaign (
+            campaign_id TEXT PRIMARY KEY, nba_run_id TEXT,
+            measure_key TEXT, plan_key TEXT, campaign_name TEXT,
+            target_cohort_ids TEXT, channel_strategy TEXT, frequency_plan TEXT,
+            message_template_id TEXT, incentive_strategy TEXT, created_timestamp TEXT
+        );
+        CREATE TABLE IF NOT EXISTS fact_nba_outreach_plan (
+            contact_id TEXT PRIMARY KEY, nba_run_id TEXT, member_gap_key TEXT,
+            campaign_id TEXT, channel TEXT, planned_datetime TEXT,
+            message_template_id TEXT, incentive_offered TEXT, status TEXT DEFAULT 'PLANNED',
+            generated_message TEXT, sent_at TEXT, error_reason TEXT, created_timestamp TEXT
+        );
+        CREATE TABLE IF NOT EXISTS fact_nba_claude_decision (
+            nba_run_id TEXT, member_gap_key TEXT, member_key TEXT,
+            measure_key TEXT, measure_code TEXT, plan_key TEXT,
+            measurement_year INTEGER, is_in_selected_opportunity TEXT,
+            cohort_id TEXT, cohort_name TEXT, cohort_priority_rank INTEGER,
+            nba_action_type TEXT, final_channel TEXT, final_incentive TEXT,
+            priority_score INTEGER, sla_days_to_contact INTEGER,
+            expected_gap_closure_lift REAL, reason_codes TEXT,
+            explanation_text TEXT, decision_timestamp TEXT
+        );
         """)
 
 _ensure_tables()
