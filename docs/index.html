@@ -2040,6 +2040,8 @@ async function runSimulation(rate){
 const CONV_STATE_BADGE = {
   OUTREACH_SENT: {cls:'badge-gray',  label:'Outreach Sent'},
   EMAIL_SENT:    {cls:'badge-blue',  label:'Email Sent'},
+  SMS_SENT:      {cls:'badge-gray',  label:'SMS Sent'},
+  CALL_SENT:     {cls:'badge-gray',  label:'Call Sent'},
   AWAITING_DATE: {cls:'badge-amber', label:'Awaiting Date'},
   DATE_CONFIRMED:{cls:'badge-teal',  label:'Date Confirmed'},
   FOLLOW_UP_SENT:{cls:'badge-blue',  label:'Follow-up Sent'},
@@ -2267,10 +2269,11 @@ function renderConvSection(){
     escalated:sorted.filter(c=>c.conversation_state==='ESCALATED').length,
   };
 
+  const CH_ICON={EMAIL:'✉️',SMS:'💬',CALL:'📞',WHATSAPP:'🟢'};
   const cards=sorted.length===0
     ?`<div style="padding:1.5rem;text-align:center;color:var(--g400);font-style:italic">
-        No WhatsApp conversations yet.<br>
-        <span style="font-size:.8rem">Conversations are created when outreach is sent via WhatsApp channel.</span>
+        No outreach conversations yet.<br>
+        <span style="font-size:.8rem">Conversations appear here once outreach is sent.</span>
       </div>`
     :sorted.map(c=>{
         const cid=c.contact_id;
@@ -2278,6 +2281,8 @@ function renderConvSection(){
         const expanded=!!S.simExpanded[cid];
         const state=c.conversation_state;
         const done=['COMPLETED','DECLINED','ESCALATED'].includes(state);
+        const chKey=(c.channel||'WHATSAPP').toUpperCase();
+        const chIcon=CH_ICON[chKey]||'📨';
 
         let outcomeStrip='';
         if(state==='COMPLETED'){
@@ -2286,7 +2291,7 @@ function renderConvSection(){
           outcomeStrip=`<div style="display:flex;gap:.75rem;padding:.3rem .9rem .55rem;font-size:.72rem;color:var(--g600)">
             ${c.appointment_date?`<span>📅 <b>${c.appointment_date}</b></span>`:''}
             ${ms!==null?`<span>⏱ ${ms}d outreach→close</span>`:''}
-            <span style="color:#25D366;font-weight:600">💬 Closed via WhatsApp</span>
+            <span style="color:#25D366;font-weight:600">💬 Closed via ${chKey}</span>
           </div>`;
         }
 
@@ -2296,6 +2301,7 @@ function renderConvSection(){
                       cursor:pointer;user-select:none" onclick="toggleSimThread('${cid}')">
             <span style="font-family:monospace;font-size:.78rem;color:var(--g700);min-width:7rem">${c.member_key||'—'}</span>
             <span style="font-size:.78rem;color:var(--g600);min-width:4.5rem">${c.measure_name||'—'}</span>
+            <span style="font-size:.72rem;color:var(--g400);white-space:nowrap">${chIcon} ${chKey}</span>
             <span style="font-size:.74rem;color:var(--g400)">${outreachDate}</span>
             <span style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
               ${convStateBadge(state)}
@@ -2319,8 +2325,8 @@ function renderConvSection(){
   return `<div id="conv-section" style="background:var(--white);border:1px solid var(--g200);border-radius:.5rem;padding:1.25rem">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
       <div>
-        <h3 style="font-size:.95rem;font-weight:600;color:var(--g900);margin:0 0 .15rem">WhatsApp Conversations</h3>
-        <p style="font-size:.72rem;color:var(--g400);margin:0">Click any row to open the simulator and replay the conversation as the member.</p>
+        <h3 style="font-size:.95rem;font-weight:600;color:var(--g900);margin:0 0 .15rem">Outreach Conversations</h3>
+        <p style="font-size:.72rem;color:var(--g400);margin:0">Click any row to open the simulator and reply as the member — works for Email, SMS, Call, and WhatsApp.</p>
       </div>
       <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
         ${summary.total>0?`

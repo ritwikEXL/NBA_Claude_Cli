@@ -130,6 +130,7 @@ with get_db() as _mc:
         "ALTER TABLE dim_measure ADD COLUMN clinical_description TEXT DEFAULT ''",
         "ALTER TABLE dim_measure ADD COLUMN age_gender_eligibility TEXT DEFAULT ''",
         "ALTER TABLE dim_measure ADD COLUMN nba_default_playbook TEXT DEFAULT ''",
+        "ALTER TABLE whatsapp_conversations ADD COLUMN channel TEXT DEFAULT 'WHATSAPP'",
     ]:
         try:
             _mc.execute(_col)
@@ -2011,7 +2012,7 @@ def send_message(contact_id: str):
             "status": "FAILED", "error": err, "override_note": override_note,
         }
 
-    # 4. Deliver — EMAIL goes via Gmail SMTP, all other channels via WhatsApp sandbox
+    # 4. Deliver — EMAIL goes via Gmail SMTP; SMS/Call/WhatsApp are simulated locally (no Twilio)
     delivered_to = None
     send_result = {}
     channel_used = None
@@ -2033,28 +2034,21 @@ def send_message(contact_id: str):
             else:
                 raise Exception(send_result.get("error", "Gmail send failed"))
         else:
-            channel_used = "WhatsApp"
-            delivered_to = "whatsapp:" + TEST_SMS
-            send_result = _send_whatsapp(TEST_SMS, message_text)
+            # Simulate SMS / Call / WhatsApp delivery locally — no external API call
+            channel_used = channel.upper()
+            delivered_to = f"simulated:{channel_used}"
+            send_result = {"simulated": True}
             success = True
             new_status = "SENT"
     except Exception as e:
-        # Extract the most useful part of Twilio errors
         raw = str(e)
-        if hasattr(e, 'msg'):
-            raw = e.msg
-        elif hasattr(e, 'message') and e.message:
-            raw = e.message
-        # Twilio errors often contain "Unable to create record: ..." — trim to that
-        if "Unable to create record" in raw:
-            raw = raw.split("Unable to create record")[-1].strip(": ")
         error_reason = raw[:300]
         success = False
         new_status = "FAILED"
         channel_used = channel_used or channel
         send_result = {"error": error_reason}
 
-    # 5. Persist result + create WhatsApp conversation row for SMS/WhatsApp channels
+    # 5. Persist result + create conversation row for ALL channels so Simulate Reply works everywhere
     sent_at = datetime.now().isoformat(timespec="seconds") if success else None
     with get_db() as conn:
         conn.execute(
@@ -2063,23 +2057,31 @@ def send_message(contact_id: str):
                WHERE contact_id = ?""",
             (new_status, message_text, sent_at, error_reason, contact_id),
         )
-        # Track sent messages so the evaluation tab shows status for all channels
-        if success and channel_used in ("WhatsApp", "EMAIL"):
+        if success:
             mgk = contact.get("member_gap_key", "")
             run_id = contact.get("nba_run_id", "")
-            # For EMAIL use the test email address as the identifier; for WhatsApp use the phone
-            contact_identifier = (os.getenv("TEST_EMAIL", "") if channel_used == "EMAIL"
-                                  else (TEST_SMS or ""))
-            init_state = "EMAIL_SENT" if channel_used == "EMAIL" else "OUTREACH_SENT"
+            ch_upper = (channel_used or channel).upper()
+            if ch_upper == "EMAIL":
+                init_state = "EMAIL_SENT"
+                contact_identifier = os.getenv("TEST_EMAIL", "")
+            elif ch_upper == "CALL":
+                init_state = "CALL_SENT"
+                contact_identifier = TEST_SMS or ""
+            elif ch_upper == "SMS":
+                init_state = "SMS_SENT"
+                contact_identifier = TEST_SMS or ""
+            else:
+                init_state = "OUTREACH_SENT"
+                contact_identifier = TEST_SMS or ""
             conn.execute(
                 """INSERT OR IGNORE INTO whatsapp_conversations
                    (conversation_id, member_gap_key, contact_id, nba_run_id,
-                    member_phone, member_key, measure_name,
+                    member_phone, member_key, measure_name, channel,
                     conversation_state, created_timestamp, last_updated)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (f"CONV_{contact_id}", mgk, contact_id, run_id,
                  contact_identifier, member.get("member_key",""), measure_name,
-                 init_state, sent_at, sent_at)
+                 ch_upper, init_state, sent_at, sent_at)
             )
 
     return {
@@ -2179,12 +2181,13 @@ def send_all(run_id: str):
 
 
 def _backfill_conversations(run_id: str):
-    """Create missing whatsapp_conversations rows for all SENT SMS contacts in a run."""
+    """Create missing conversation rows for all SENT contacts in a run (all channels)."""
     now_iso = datetime.now().isoformat(timespec="seconds")
     phone = os.getenv("TEST_SMS", "")
+    email = os.getenv("TEST_EMAIL", "")
     with get_db() as conn:
         missing = conn.execute(
-            """SELECT o.contact_id, o.member_gap_key, o.nba_run_id, o.sent_at,
+            """SELECT o.contact_id, o.member_gap_key, o.nba_run_id, o.sent_at, o.channel,
                       g.member_key, g.measure_key as measure_name
                FROM fact_nba_outreach_plan o
                LEFT JOIN fact_member_gap g ON g.member_gap_key = o.member_gap_key
@@ -2196,15 +2199,28 @@ def _backfill_conversations(run_id: str):
         for r in missing:
             r = dict(r)
             cid = r["contact_id"]
+            ch = (r.get("channel") or "WHATSAPP").upper()
+            if ch == "EMAIL":
+                init_state = "EMAIL_SENT"
+                identifier = email
+            elif ch == "CALL":
+                init_state = "CALL_SENT"
+                identifier = phone
+            elif ch == "SMS":
+                init_state = "SMS_SENT"
+                identifier = phone
+            else:
+                init_state = "OUTREACH_SENT"
+                identifier = phone
             conn.execute(
                 """INSERT OR IGNORE INTO whatsapp_conversations
                    (conversation_id, member_gap_key, contact_id, nba_run_id,
-                    member_phone, member_key, measure_name,
+                    member_phone, member_key, measure_name, channel,
                     conversation_state, created_timestamp, last_updated)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (f"CONV_{cid}", r["member_gap_key"], cid, r["nba_run_id"],
-                 phone, r["member_key"] or "", r["measure_name"] or "",
-                 "OUTREACH_SENT", r["sent_at"] or now_iso, r["sent_at"] or now_iso)
+                 identifier, r["member_key"] or "", r["measure_name"] or "",
+                 ch, init_state, r["sent_at"] or now_iso, r["sent_at"] or now_iso)
             )
 
 
@@ -3062,15 +3078,18 @@ def simulate_conversation(payload: dict):
             if not contact_row:
                 raise HTTPException(status_code=404, detail="No outreach contact found for this contact_id")
             cr = dict(contact_row)
+            ch = (cr.get("channel") or "WHATSAPP").upper()
+            init_st = "EMAIL_SENT" if ch=="EMAIL" else "CALL_SENT" if ch=="CALL" else "SMS_SENT" if ch=="SMS" else "OUTREACH_SENT"
+            identifier = os.getenv("TEST_EMAIL","") if ch=="EMAIL" else (TEST_SMS or "")
             conn.execute(
                 """INSERT OR IGNORE INTO whatsapp_conversations
                    (conversation_id, member_gap_key, contact_id, nba_run_id,
-                    member_phone, member_key, measure_name,
+                    member_phone, member_key, measure_name, channel,
                     conversation_state, created_timestamp, last_updated)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (f"CONV_{contact_id}", cr.get("member_gap_key",""), contact_id, cr.get("nba_run_id",""),
-                 TEST_SMS, cr.get("member_key",""), cr.get("measure_code","health screening"),
-                 "OUTREACH_SENT", now_iso, now_iso)
+                 identifier, cr.get("member_key",""), cr.get("measure_code","health screening"),
+                 ch, init_st, now_iso, now_iso)
             )
             conv = conn.execute(
                 "SELECT * FROM whatsapp_conversations WHERE contact_id=? LIMIT 1", (contact_id,)
