@@ -2209,7 +2209,7 @@ function _simActionButtons(conv){
     </button>`;
 
   let btns='';
-  if(state==='OUTREACH_SENT'){
+  if(['OUTREACH_SENT','SMS_SENT','CALL_SENT','EMAIL_SENT'].includes(state)){
     btns=mkBtn(`simSendReply('${cid}','yes i will go','${rid}')`, '#25D366','#fff','✓ Yes, I will go')
         +mkBtn(`simSendReply('${cid}','no not now','${rid}')`, 'var(--g200)','var(--g700)','✗ No, not now');
   } else if(state==='AWAITING_DATE'){
