@@ -2020,19 +2020,26 @@ def send_message(contact_id: str):
     try:
         if channel.upper() == "EMAIL":
             test_email = os.getenv("TEST_EMAIL", "")
-            if not test_email:
-                raise Exception("TEST_EMAIL not configured in .env — email delivery disabled")
-            if not os.getenv("GMAIL_ADDRESS") or not os.getenv("GMAIL_APP_PASSWORD"):
-                raise Exception("GMAIL_ADDRESS or GMAIL_APP_PASSWORD not configured in .env")
-            subject = f"Health Reminder: {measure_name}"
-            send_result = send_email_gmail(test_email, subject, message_text)
-            if send_result.get("success"):
+            gmail_addr = os.getenv("GMAIL_ADDRESS", "")
+            gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
+            if test_email and gmail_addr and gmail_pass:
+                # Real email delivery via Gmail SMTP
+                subject = f"Health Reminder: {measure_name}"
+                send_result = send_email_gmail(test_email, subject, message_text)
+                if send_result.get("success"):
+                    channel_used = "EMAIL"
+                    delivered_to = test_email
+                    success = True
+                    new_status = "SENT"
+                else:
+                    raise Exception(send_result.get("error", "Gmail send failed"))
+            else:
+                # Simulate email locally when credentials not configured (demo/Render mode)
                 channel_used = "EMAIL"
-                delivered_to = test_email
+                delivered_to = f"simulated:EMAIL"
+                send_result = {"simulated": True}
                 success = True
                 new_status = "SENT"
-            else:
-                raise Exception(send_result.get("error", "Gmail send failed"))
         else:
             # Simulate SMS / Call / WhatsApp delivery locally — no external API call
             channel_used = channel.upper()
