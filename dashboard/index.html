@@ -1095,13 +1095,12 @@ async function finalizeSession(){
       incentive_strategy:S.campaign.incSum,created_timestamp:ts,
     };
     try{
-      // Decisions and campaign in parallel, then outreach (bulk), then trace rows
-      // Each apiPost has a 15s AbortController timeout so no call can hang indefinitely
+      // Bulk saves — single POST per table instead of one-per-row to avoid overwhelming Render
       await Promise.all([
-        ...S.decisionRows.map(r=>apiPost(`/session/${S.runId}/decision`,r)),
-        apiPost(`/session/${S.runId}/campaign`,campRow),
+        apiPost(`/session/${S.runId}/decisions`, S.decisionRows),
+        apiPost(`/session/${S.runId}/campaign`, campRow),
       ]);
-      await apiPost(`/session/${S.runId}/outreach`,S.outreachRows);
+      await apiPost(`/session/${S.runId}/outreach`, S.outreachRows);
       await Promise.all(S.traceRows.map(r=>apiPost(`/session/${S.runId}/trace`,r)));
     }catch(e){console.warn('API write error (non-fatal):',e);}
   }finally{

@@ -1531,6 +1531,22 @@ def post_decision(run_id: str, body: dict[str, Any]):
     return {"status": "ok", "run_id": run_id}
 
 
+# ── POST /session/{run_id}/decisions (bulk) ───────────────────────────────────
+
+@app.post("/session/{run_id}/decisions", status_code=201)
+def post_decisions_bulk(run_id: str, body: list[dict[str, Any]]):
+    if not body:
+        return {"status": "ok", "inserted": 0}
+    for row in body:
+        row["nba_run_id"] = run_id
+    cols = list(body[0].keys())
+    sql = f"""INSERT OR REPLACE INTO fact_nba_claude_decision
+              ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"""
+    with get_db() as conn:
+        conn.executemany(sql, [[r[c] for c in cols] for r in body])
+    return {"status": "ok", "inserted": len(body)}
+
+
 # ── POST /session/{run_id}/campaign ───────────────────────────────────────────
 
 @app.post("/session/{run_id}/campaign", status_code=201)
