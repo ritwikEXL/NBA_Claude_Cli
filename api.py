@@ -3541,7 +3541,13 @@ def _ingest_csv(content: bytes, filename: str) -> dict:
 
 
 def _ingest_xlsx(content: bytes, filename: str) -> dict:
-    """Parse an Excel workbook. Each sheet is treated as a CSV-equivalent — auto-detected and upserted."""
+    """Parse an Excel workbook with automatic column-alias mapping.
+
+    Handles both exact-schema sheets (column names already match DB) and
+    user-facing alias sheets (e.g. member_id→member_key, plan_id→plan_key).
+    Member Roster is split into dim_member + dim_member_channel_pref automatically.
+    Care Gap File generates member_gap_key and resolves measure_key from dim_measure.
+    """
     try:
         import openpyxl
     except ImportError:
@@ -3552,39 +3558,206 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Cannot open Excel file: {e}"}
 
+    def _extract_year(val):
+        if val is None:
+            return None
+        if isinstance(val, (int, float)):
+            return int(val)
+        s = str(val)
+        try:
+            return int(s[:4])
+        except ValueError:
+            return None
+
+    def _idx(headers, *names):
+        """Return index of first matching name (case-insensitive), or -1."""
+        hl = [h.lower() for h in headers]
+        for n in names:
+            if n.lower() in hl:
+                return hl.index(n.lower())
+        return -1
+
+    def _val(row, idx, default=None):
+        if idx < 0 or idx >= len(row):
+            return default
+        v = row[idx]
+        return str(v) if v is not None else default
+
+    def _measure_key_map():
+        try:
+            with get_db() as conn:
+                rows = conn.execute("SELECT measure_code, measure_key FROM dim_measure").fetchall()
+                return {r[0]: r[1] for r in rows}
+        except Exception:
+            return {}
+
     results = []
+
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
+        all_rows = list(ws.iter_rows(values_only=True))
+        if not all_rows or not any(all_rows[0]):
+            results.append({"sheet": sheet_name, "status": "skipped", "reason": "empty"})
             continue
-        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-        if not any(headers):
+
+        raw_h = [str(h).strip() if h is not None else "" for h in all_rows[0]]
+        data = [r for r in all_rows[1:] if any(v is not None for v in r)]
+        if not data:
+            results.append({"sheet": sheet_name, "status": "skipped", "reason": "no data rows"})
             continue
-        table = _detect_table(headers)
+
+        sn = sheet_name.lower()
+
+        # ── Plan Configuration → dim_plan_contract ───────────────────────────
+        if "plan" in sn and _idx(raw_h, "plan_id", "plan_key") >= 0:
+            pi   = _idx(raw_h, "plan_id",            "plan_key")
+            pn   = _idx(raw_h, "plan_name")
+            reg  = _idx(raw_h, "region")
+            seg  = _idx(raw_h, "segment")
+            csr  = _idx(raw_h, "current_star_rating", "star_rating_current")
+            tsr  = _idx(raw_h, "target_star_rating",  "star_rating_target")
+            rev  = _idx(raw_h, "annual_revenue",      "plan_annual_revenue")
+            tot  = _idx(raw_h, "total_members")
+            inserted = 0
+            with get_db() as conn:
+                conn.execute("DELETE FROM dim_plan_contract")
+                for row in data:
+                    pk = _val(row, pi)
+                    if not pk:
+                        continue
+                    try:
+                        conn.execute(
+                            """INSERT OR REPLACE INTO dim_plan_contract
+                               (plan_key, plan_name, region, segment,
+                                star_rating_current, star_rating_target,
+                                plan_annual_revenue, total_members)
+                               VALUES (?,?,?,?,?,?,?,?)""",
+                            (pk, _val(row, pn), _val(row, reg), _val(row, seg),
+                             _val(row, csr), _val(row, tsr),
+                             _val(row, rev), _val(row, tot))
+                        )
+                        inserted += 1
+                    except Exception:
+                        pass
+            results.append({"sheet": sheet_name, "status": "ok", "table": "dim_plan_contract", "rows_loaded": inserted})
+            continue
+
+        # ── Member Roster → dim_member + dim_member_channel_pref ─────────────
+        if "member" in sn and _idx(raw_h, "member_id", "member_key") >= 0:
+            mi   = _idx(raw_h, "member_id",              "member_key")
+            dob  = _idx(raw_h, "date_of_birth",          "dob_year")
+            gen  = _idx(raw_h, "gender")
+            lang = _idx(raw_h, "language_preference")
+            dls  = _idx(raw_h, "digital_literacy_segment")
+            ses  = _idx(raw_h, "socioeconomic_segment")
+            ema  = _idx(raw_h, "email_allowed")
+            sms  = _idx(raw_h, "sms_allowed")
+            cal  = _idx(raw_h, "call_allowed")
+            pch  = _idx(raw_h, "preferred_channel")
+            ins_m = ins_cp = 0
+            with get_db() as conn:
+                conn.execute("DELETE FROM dim_member")
+                conn.execute("DELETE FROM dim_member_channel_pref")
+                for row in data:
+                    mk = _val(row, mi)
+                    if not mk:
+                        continue
+                    yr = _extract_year(row[dob] if dob >= 0 and dob < len(row) else None)
+                    try:
+                        conn.execute(
+                            """INSERT OR REPLACE INTO dim_member
+                               (member_key, dob_year, gender, language_preference,
+                                digital_literacy_segment, socioeconomic_segment)
+                               VALUES (?,?,?,?,?,?)""",
+                            (mk, yr, _val(row, gen), _val(row, lang), _val(row, dls), _val(row, ses))
+                        )
+                        ins_m += 1
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(
+                            """INSERT OR REPLACE INTO dim_member_channel_pref
+                               (member_key, email_allowed, sms_allowed, call_allowed,
+                                preferred_channel, do_not_contact_flag)
+                               VALUES (?,?,?,?,?,'false')""",
+                            (mk, _val(row, ema, "false"), _val(row, sms, "false"),
+                             _val(row, cal, "false"), _val(row, pch, "EMAIL"))
+                        )
+                        ins_cp += 1
+                    except Exception:
+                        pass
+            results.append({"sheet": sheet_name, "status": "ok",
+                             "table": "dim_member + dim_member_channel_pref",
+                             "rows_loaded": ins_m})
+            continue
+
+        # ── Care Gap File → fact_member_gap ───────────────────────────────────
+        if _idx(raw_h, "gap_status") >= 0 and _idx(raw_h, "member_id", "member_key") >= 0:
+            mi   = _idx(raw_h, "member_id",   "member_key")
+            pi   = _idx(raw_h, "plan_id",     "plan_key")
+            mc   = _idx(raw_h, "measure_code")
+            gs   = _idx(raw_h, "gap_status")
+            prop = _idx(raw_h, "nba_propensity_score", "clinical_risk_score")
+            dop  = _idx(raw_h, "days_open")
+            yr   = _idx(raw_h, "measurement_year")
+            gd   = _idx(raw_h, "gap_open_date")
+            uch  = _idx(raw_h, "upstream_recommended_channel")
+            sup  = _idx(raw_h, "is_suppressed")
+            mk_map = _measure_key_map()
+            inserted = 0
+            with get_db() as conn:
+                conn.execute("DELETE FROM fact_member_gap")
+                for idx, row in enumerate(data):
+                    member_key   = _val(row, mi, f"MBR{idx:05d}")
+                    plan_key     = _val(row, pi, "P001")
+                    measure_code = _val(row, mc, "UNK")
+                    measure_key  = mk_map.get(measure_code, measure_code)
+                    mgk          = f"G_{plan_key}_{measure_code}_{member_key}"
+                    propensity   = row[prop] if prop >= 0 and prop < len(row) and row[prop] is not None else 0.5
+                    try:
+                        conn.execute(
+                            """INSERT OR REPLACE INTO fact_member_gap
+                               (member_gap_key, member_key, measure_key, measure_code,
+                                plan_key, measurement_year, gap_status, gap_open_date,
+                                days_open, nba_propensity_score, upstream_recommended_channel,
+                                is_suppressed)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            (mgk, member_key, measure_key, measure_code, plan_key,
+                             _val(row, yr, 2026), _val(row, gs, "Open"),
+                             _val(row, gd), _val(row, dop),
+                             propensity, _val(row, uch),
+                             _val(row, sup, "false"))
+                        )
+                        inserted += 1
+                    except Exception:
+                        pass
+            results.append({"sheet": sheet_name, "status": "ok", "table": "fact_member_gap", "rows_loaded": inserted})
+            continue
+
+        # ── Generic path: try fingerprint detection with common aliases ───────
+        _ALIASES = {
+            "member_id": "member_key", "plan_id": "plan_key",
+            "current_star_rating": "star_rating_current",
+            "target_star_rating": "star_rating_target",
+            "annual_revenue": "plan_annual_revenue",
+        }
+        mapped_h = [_ALIASES.get(h.lower(), h) for h in raw_h]
+        table = _detect_table(mapped_h)
         if not table:
-            results.append({"sheet": sheet_name, "status": "skipped", "reason": f"No matching table for columns: {headers[:8]}"})
+            results.append({"sheet": sheet_name, "status": "skipped",
+                             "reason": f"No matching table for columns: {raw_h[:8]}"})
             continue
 
-        data_rows = rows[1:]
-        if not data_rows:
-            results.append({"sheet": sheet_name, "status": "skipped", "reason": "No data rows"})
-            continue
-
-        cols = [h for h in headers if h]
-        col_count = len(cols)
-        placeholders = ",".join(["?" for _ in cols])
-        col_list = ",".join(cols)
-
+        cols = [h for h in mapped_h if h]
+        placeholders = ",".join(["?"] * len(cols))
         with get_db() as conn:
             conn.execute(f"DELETE FROM {table}")
             inserted = 0
-            for row in data_rows:
-                vals = [str(v) if v is not None else None for v in row[:col_count]]
-                if all(v is None for v in vals):
-                    continue
+            for row in data:
+                vals = [str(v) if v is not None else None for v in row[:len(cols)]]
                 try:
-                    conn.execute(f"INSERT OR REPLACE INTO {table} ({col_list}) VALUES ({placeholders})", vals)
+                    conn.execute(
+                        f"INSERT OR REPLACE INTO {table} ({','.join(cols)}) VALUES ({placeholders})", vals)
                     inserted += 1
                 except Exception:
                     pass
@@ -3593,7 +3766,7 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
     wb.close()
     loaded = [r for r in results if r.get("status") == "ok"]
     if not loaded:
-        return {"status": "error", "message": f"No sheets matched known tables. Sheets tried: {wb.sheetnames}. Details: {results}"}
+        return {"status": "error", "message": f"No sheets matched known tables. Details: {results}"}
     return {"status": "ok", "filename": filename, "sheets": results}
 
 
