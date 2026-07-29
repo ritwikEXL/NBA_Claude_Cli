@@ -306,6 +306,22 @@ TOOLS = [
         }
     },
     {
+        "name": "query_decisions",
+        "description": (
+            "Return the cohort assignments and channel decisions already written for this run. "
+            "Use this in the outreach phase to discover which cohort_ids exist and their channels/incentives."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nba_run_id": {"type": "string"},
+                "measure_key": {"type": "string", "description": "Optional filter"},
+                "plan_key": {"type": "string", "description": "Optional filter"}
+            },
+            "required": ["nba_run_id"]
+        }
+    },
+    {
         "name": "calculate_financial_impact",
         "description": (
             "Calculate CMS bonus impact, ROI, and outreach cost for a measure × plan opportunity. "
@@ -341,6 +357,8 @@ def _execute_tool(name: str, inputs: dict) -> Any:
         return _tool_write_session_decision(**inputs)
     if name == "write_trace":
         return _tool_write_trace(**inputs)
+    if name == "query_decisions":
+        return _tool_query_decisions(**inputs)
     if name == "write_campaign":
         return _tool_write_campaign(**inputs)
     if name == "write_outreach_plan":
@@ -528,6 +546,29 @@ def _tool_write_trace(
         conn.close()
 
 
+def _tool_query_decisions(nba_run_id, measure_key=None, plan_key=None):
+    conn = _db_conn()
+    try:
+        where = ["nba_run_id=?"]
+        params = [nba_run_id]
+        if measure_key:
+            where.append("measure_key=?"); params.append(measure_key)
+        if plan_key:
+            where.append("plan_key=?"); params.append(plan_key)
+        rows = conn.execute(f"""
+            SELECT cohort_id, cohort_name, final_channel, final_incentive,
+                   COUNT(*) as member_count,
+                   AVG(expected_gap_closure_lift) as avg_lift
+            FROM fact_nba_claude_decision
+            WHERE {' AND '.join(where)}
+            GROUP BY cohort_id, cohort_name, final_channel, final_incentive
+            ORDER BY AVG(priority_score) DESC
+        """, params).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def _tool_write_campaign(
     nba_run_id, measure_key, plan_key, campaign_name, target_cohort_ids,
     channel_strategy, frequency_plan, message_template_id, incentive_strategy
@@ -561,11 +602,16 @@ def _tool_write_outreach_plan(
         from datetime import timedelta
         planned_dt = (datetime.now() + timedelta(days=days_from_now)).strftime("%Y-%m-%d")
 
-        # Get all member_gap_keys for this cohort from decisions
+        # Get member_gap_keys for this cohort; fall back to all decisions for run if 0 rows
         rows = conn.execute("""
             SELECT member_gap_key FROM fact_nba_claude_decision
             WHERE nba_run_id=? AND measure_key=? AND plan_key=? AND cohort_id=?
         """, (nba_run_id, measure_key, plan_key, cohort_id)).fetchall()
+        if not rows:
+            rows = conn.execute("""
+                SELECT DISTINCT member_gap_key FROM fact_nba_claude_decision
+                WHERE nba_run_id=? AND measure_key=? AND plan_key=?
+            """, (nba_run_id, measure_key, plan_key)).fetchall()
 
         written = 0
         for r in rows:
@@ -889,21 +935,21 @@ Use nba_run_id: {nba_run_id} in all write calls."""
 Your job is to translate the approved campaign into a concrete outreach schedule.
 
 Steps:
-1. Query dim_nba_campaign to get the campaign_id for this run (use query_members to get member list)
-2. For each cohort in the campaign, call write_outreach_plan with:
-   - campaign_id from write_campaign result
-   - channel, incentive_offered matching the cohort
-   - days_from_now: 7 for priority cohorts, 14 for mid, 21 for low
-   - message_template: a plain-language, Medicare-appropriate message for that cohort
-3. Call write_trace with step OUTREACH_PLAN_GENERATED, including counts by channel
-4. Summarize the plan: contacts by channel, timeline, expected Stars impact
+1. Call query_decisions to get the cohort_ids, channels, and incentives already decided for this run
+2. For each cohort returned, call write_outreach_plan with:
+   - campaign_id (use the value from the DB or construct as 'C_<nba_run_id>_<measure_key>_<plan_key>')
+   - cohort_id, channel, incentive_offered exactly as returned by query_decisions
+   - days_from_now: 7 for rank-1 cohorts, 14 for rank-2, 21 for rank-3+
+   - message_template: a concise, plain-language Medicare-appropriate message for that cohort
+3. Call write_trace with step OUTREACH_PLAN_GENERATED, including total contact count
+4. Return a JSON summary
 
 Return JSON with keys: total_contacts (int), by_channel (dict), timeline_days (int), expected_gap_closures (int), expected_stars_lift (float)""",
             "user": f"""Generate outreach plan for NBA run {nba_run_id}, measure {measure_key}, plan {plan_key}.
 
-First get the campaign from the DB: campaign_id = 'C_{nba_run_id}_{measure_key}_{plan_key}'.
-For each cohort in fact_nba_claude_decision, call write_outreach_plan with a real message template.
-Then write the final trace and return a concise outreach summary.
+Step 1: Call query_decisions with nba_run_id='{nba_run_id}', measure_key='{measure_key}', plan_key='{plan_key}' to see the cohorts.
+Step 2: For each cohort, call write_outreach_plan. Use campaign_id='C_{nba_run_id}_{measure_key}_{plan_key}'.
+Step 3: Call write_trace with step OUTREACH_PLAN_GENERATED.
 Use nba_run_id: {nba_run_id} in all write calls."""
         }
     }
