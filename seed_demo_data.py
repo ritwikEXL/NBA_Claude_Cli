@@ -262,8 +262,8 @@ MEASURES = [
 
 for mk, mc, mn, domain, sw in MEASURES:
     conn.execute(
-        "INSERT OR REPLACE INTO dim_measure (measure_key,measure_code,measure_name,hedis_domain,star_weight,eligibility_criteria) VALUES (?,?,?,?,?,?)",
-        (mk, mc, mn, domain, sw, f"Medicare Advantage members eligible for {mc}")
+        "INSERT OR REPLACE INTO dim_measure (measure_key,measure_code,measure_name,hedis_domain,star_weight) VALUES (?,?,?,?,?)",
+        (mk, mc, mn, domain, sw)
     )
 
 # Benchmarks
@@ -409,7 +409,7 @@ for plan_key, count in PLAN_WEIGHTS.items():
         m_idx += 1
 
 conn.executemany(
-    "INSERT OR REPLACE INTO dim_member (member_key,plan_key,age_band,gender,language_preference,digital_literacy_segment,socioeconomic_segment,display_name) VALUES (?,?,?,?,?,?,?,?)", members
+    "INSERT OR REPLACE INTO dim_member (member_key,age_band,gender,language_preference,digital_literacy_segment,socioeconomic_segment,display_name) VALUES (?,?,?,?,?,?,?)", [(mk,age,g,lang,dig,ses,name) for mk,_pk,age,g,lang,dig,ses,name in members]
 )
 
 # Channel prefs
@@ -515,6 +515,7 @@ SESSIONS = [
 ]
 
 PLAN_NAMES = {p[0]: p[1] for p in PLANS}
+PLAN_STARS = {p[0]: (p[5], p[6]) for p in PLANS}
 MEASURE_NAMES = {m[0]: m[2] for m in MEASURES}
 
 CONV_STATES = ["COMPLETED","DATE_CONFIRMED","AWAITING_DATE","FOLLOW_UP_SENT","OUTREACH_SENT","DECLINED"]
@@ -581,14 +582,18 @@ for sess in SESSIONS:
 
     # Campaign
     conn.execute(
-        "INSERT OR REPLACE INTO dim_nba_campaign VALUES (?,?,?,?,?,?,?,?,?,?)",
+        """INSERT OR REPLACE INTO dim_nba_campaign
+           (campaign_id,nba_run_id,plan_key,measure_key,channel_strategy,frequency_plan,
+            incentive_strategy,message_template_id,target_cohort_ids,created_timestamp,campaign_name)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (camp_id, run_id, pk, mk,
          "SMS primary; CALL fallback",
          "SMS d1 → d7 → call d14; stop on close",
          "GIFTCARD_25 for all cohorts",
          f"TMPL_{mc}_PLAIN_V1",
          "C1_DIGITAL_HIGH_PROP,C2_ACCESS_BARRIER",
-         sent_ts)
+         sent_ts,
+         f"{mc} Outreach Campaign")
     )
 
     # Outreach plan + decisions + conversations
@@ -611,12 +616,18 @@ for sess in SESSIONS:
         incentive = "GIFTCARD_25"
 
         conn.execute(
-            "INSERT OR REPLACE INTO fact_nba_claude_decision VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            """INSERT OR REPLACE INTO fact_nba_claude_decision
+               (member_gap_key,nba_run_id,cohort_id,cohort_name,cohort_priority_rank,
+                nba_action_type,final_channel,final_incentive,priority_score,
+                sla_days_to_contact,expected_gap_closure_lift,reason_codes,
+                explanation_text,is_in_selected_opportunity,member_key,measure_key,
+                measure_code,plan_key,measurement_year,decision_timestamp)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (gk, run_id, cohort, cohort.replace("_"," ").title(), 1 if cohort.startswith("C1") else 2,
              "OUTREACH_MEMBER", channel, incentive,
-             round(gap["nba_propensity_score"], 3), 7, resp_rate,
+             round(gap["nba_propensity_score"]*100), 7, resp_rate,
              "HIGH_PROP,ELIGIBLE", f"Member targeted for {mc} gap closure",
-             "true")
+             "true", mem_key, gap.get("measure_key",""), mc, pk, 2026, sent_ts)
         )
 
         conn.execute(
@@ -639,14 +650,19 @@ for sess in SESSIONS:
             appt = str(date.today() + timedelta(days=random.randint(1, 14))) if state in ("DATE_CONFIRMED","FOLLOW_UP_SENT") else None
 
         conn.execute(
-            "INSERT OR IGNORE INTO whatsapp_conversations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            """INSERT OR IGNORE INTO whatsapp_conversations
+               (conversation_id,member_gap_key,contact_id,nba_run_id,member_phone,
+                member_key,measure_name,conversation_state,appointment_date,
+                follow_up_sent,gap_closed,last_inbound_msg,created_timestamp,
+                last_updated,channel)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (f"CONV_{contact_id}", gk, contact_id, run_id,
              test_phone, mem_key, meas_name,
              state, appt,
              1 if state == "COMPLETED" else 0,
              1 if is_closed else 0,
              CONV_MSGS[state],
-             sent_ts, sent_ts)
+             sent_ts, sent_ts, channel)
         )
 
     conn.commit()
@@ -674,10 +690,18 @@ for sess in SESSIONS:
     )
 
     conn.execute(
-        "INSERT OR REPLACE INTO campaign_evaluations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        """INSERT OR REPLACE INTO campaign_evaluations
+           (evaluation_id,nba_run_id,campaign_id,evaluation_date,evaluation_window,measure_code,
+            total_members_contacted,gaps_closed_actual,gaps_closed_expected,
+            actual_closure_rate,expected_closure_rate,performance_status,
+            stars_impact_actual,stars_impact_projected,executive_summary,created_timestamp,
+            plan_key,plan_name,measure_name,outreach_date,star_rating_current,star_rating_target)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (eval_id, run_id, camp_id, TODAY, window, mc,
          total, closed, exp_closed, act_rate, exp_rate, perf,
-         stars_act, stars_proj, summary_txt, NOW)
+         stars_act, stars_proj, summary_txt, NOW,
+         pk, plan_name, meas_name, sent_date,
+         PLAN_STARS.get(pk, (3.5, 4.0))[0], PLAN_STARS.get(pk, (3.5, 4.0))[1])
     )
 
     # Member evaluations

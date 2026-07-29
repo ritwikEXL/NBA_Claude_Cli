@@ -135,7 +135,16 @@ def _ensure_tables():
 
 _ensure_tables()
 
-active_source_id = "demo"
+# Initialize active_source_id from DB (survives server restarts)
+def _load_active_source_id() -> str:
+    try:
+        with get_db() as _c:
+            row = _c.execute("SELECT source_id FROM data_sources WHERE is_active=1 LIMIT 1").fetchone()
+            return row[0] if row else "demo"
+    except Exception:
+        return "demo"
+
+active_source_id = _load_active_source_id()
 
 # Safe schema migrations — ignore errors if column already exists
 with get_db() as _mc:
@@ -386,8 +395,11 @@ def start_session(body: dict[str, Any] = None):
 
 @app.get("/opportunities")
 def get_opportunities():
+    src = active_source_id
+    src_gap  = "(g.source_id = 'demo' OR g.source_id IS NULL)" if src == "demo" else f"g.source_id = '{src}'"
+    src_plan = "(p.source_id = 'demo' OR p.source_id IS NULL)" if src == "demo" else f"p.source_id = '{src}'"
     with get_db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT
                 m.measure_key,
                 m.measure_code,
@@ -407,6 +419,7 @@ def get_opportunities():
             FROM fact_member_gap g
             JOIN dim_measure        m ON m.measure_key = g.measure_key
             JOIN dim_plan_contract  p ON p.plan_key    = g.plan_key
+            WHERE {src_gap} AND {src_plan}
             GROUP BY m.measure_key, p.plan_key
             HAVING open_gap_count > 0
         """).fetchall()
@@ -466,24 +479,31 @@ def get_opportunities_financial():
         """).fetchall()
         hist_by_mk = {r["measure_key"]: dict(r) for r in hist_rows}
 
+        src = active_source_id
+        src_g = "(g.source_id='demo' OR g.source_id IS NULL)" if src=="demo" else f"g.source_id='{src}'"
+        src_p = "(p.source_id='demo' OR p.source_id IS NULL)" if src=="demo" else f"p.source_id='{src}'"
+
         # ── Eligible / compliant counts from fact_member_gap ──────────
-        elig_rows = conn.execute("""
+        elig_rows = conn.execute(f"""
             SELECT measure_key, plan_key,
                    COUNT(DISTINCT member_key) AS eligible_count,
                    COUNT(DISTINCT CASE WHEN LOWER(gap_status) = 'closed' THEN member_key END) AS compliant_count
             FROM fact_member_gap
+            WHERE {src_g.replace('g.','')
+            }
             GROUP BY measure_key, plan_key
         """).fetchall()
         elig_by_mk_pk = {(r["measure_key"], r["plan_key"]): dict(r) for r in elig_rows}
 
         # ── Plan-level summary (correct distinct-member counts) ────────
-        plan_summary_rows = conn.execute("""
+        plan_summary_rows = conn.execute(f"""
             SELECT plan_key,
                    COUNT(*) AS plan_open_gaps,
                    COUNT(DISTINCT member_key) AS plan_members_at_risk
             FROM fact_member_gap
             WHERE LOWER(gap_status) IN ('open','borderline','partial')
               AND LOWER(is_suppressed) NOT IN ('true','1')
+              AND {src_g.replace('g.','')}
             GROUP BY plan_key
         """).fetchall()
         plan_summary = {r["plan_key"]: dict(r) for r in plan_summary_rows}
@@ -495,10 +515,10 @@ def get_opportunities_financial():
             ).fetchall()
             plan_pop = {r["plan_key"]: dict(r) for r in pop_rows}
         except Exception:
-            plan_pop = {}  # seed_expansion.py may not have run yet; fall back to dim_plan_contract
+            plan_pop = {}
 
         # ── Main query ─────────────────────────────────────────────────
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT m.measure_key, m.measure_code, m.measure_name, m.star_weight, m.hedis_domain,
                    p.plan_key, p.plan_name, p.region, p.segment,
                    p.plan_annual_revenue, p.total_members, p.plan_pmpm_monthly,
@@ -516,6 +536,7 @@ def get_opportunities_financial():
             FROM fact_member_gap g
             JOIN dim_measure       m  ON m.measure_key = g.measure_key
             JOIN dim_plan_contract p  ON p.plan_key    = g.plan_key
+            WHERE {src_g} AND {src_p}
             GROUP BY m.measure_key, p.plan_key
             HAVING open_gaps > 0
         """).fetchall()
@@ -935,6 +956,10 @@ def get_data_sources():
 def activate_source(source_id: str):
     global active_source_id
     with get_db() as conn:
+        # Verify source exists
+        exists = conn.execute("SELECT 1 FROM data_sources WHERE source_id=?", (source_id,)).fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
         conn.execute("UPDATE data_sources SET is_active = 0")
         conn.execute("UPDATE data_sources SET is_active = 1 WHERE source_id = ?", (source_id,))
     active_source_id = source_id
@@ -1471,12 +1496,15 @@ def get_member_propensity(member_key: str):
 
 @app.get("/members")
 def get_members():
+    src = active_source_id
+    src_filter = "(m.source_id = 'demo' OR m.source_id IS NULL)" if src == "demo" else f"m.source_id = '{src}'"
     with get_db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT m.*, c.email_allowed, c.sms_allowed, c.call_allowed,
                    c.preferred_channel, c.do_not_contact_flag, c.channel_risk_notes
             FROM dim_member m
             JOIN dim_member_channel_pref c ON c.member_key = m.member_key
+            WHERE {src_filter}
         """).fetchall()
     return rows_as_dicts(rows)
 
@@ -1485,10 +1513,12 @@ def get_members():
 
 @app.get("/gaps")
 def get_gaps():
+    src = active_source_id
+    src_filter = "(source_id = 'demo' OR source_id IS NULL)" if src == "demo" else f"source_id = '{src}'"
     with get_db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT * FROM fact_member_gap
-            WHERE LOWER(is_suppressed) != 'true'
+            WHERE LOWER(is_suppressed) != 'true' AND {src_filter}
         """).fetchall()
     return rows_as_dicts(rows)
 
@@ -1498,8 +1528,11 @@ def get_gaps():
 @app.get("/gaps/{measure_key}/{plan_key}")
 def get_gaps_by_measure_plan(measure_key: str, plan_key: str):
     """Return up to 250 open/borderline gaps for a measure×plan, joined with member + channel data."""
+    src = active_source_id
+    src_gap  = "(g.source_id = 'demo' OR g.source_id IS NULL)" if src == "demo" else f"g.source_id = '{src}'"
+    src_mem  = "(mb.source_id = 'demo' OR mb.source_id IS NULL)" if src == "demo" else f"mb.source_id = '{src}'"
     with get_db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT g.*,
                    mb.age_band, mb.gender, mb.language_preference,
                    mb.digital_literacy_segment, mb.socioeconomic_segment,
@@ -1512,6 +1545,7 @@ def get_gaps_by_measure_plan(measure_key: str, plan_key: str):
               AND g.plan_key = ?
               AND LOWER(g.gap_status) IN ('open', 'borderline')
               AND LOWER(g.is_suppressed) != 'true'
+              AND {src_gap} AND {src_mem}
             ORDER BY g.nba_propensity_score DESC
             LIMIT 250
         """, (measure_key, plan_key)).fetchall()
@@ -1599,22 +1633,39 @@ def list_sessions():
         ).fetchall()]
         sessions = []
         for run_id in run_ids:
-            opp = conn.execute(
-                "SELECT output_summary FROM fact_nba_trace WHERE nba_run_id=? AND step='OPPORTUNITY_SELECTED'",
+            # Get measure/plan from decisions table
+            dec = conn.execute(
+                "SELECT measure_key, plan_key, COUNT(*) as cnt FROM fact_nba_claude_decision WHERE nba_run_id=? LIMIT 1",
                 (run_id,)
             ).fetchone()
-            summary = conn.execute(
-                "SELECT affected_population_count, timestamp FROM fact_nba_trace WHERE nba_run_id=? AND step='RUN_SUMMARY'",
+            # Get last trace step for completion time
+            last_trace = conn.execute(
+                "SELECT step, timestamp, affected_population_count FROM fact_nba_trace WHERE nba_run_id=? ORDER BY timestamp DESC LIMIT 1",
                 (run_id,)
             ).fetchone()
             started = conn.execute(
                 "SELECT MIN(timestamp) FROM fact_nba_trace WHERE nba_run_id=?", (run_id,)
             ).fetchone()
+            # Check campaign for plan/measure name
+            camp = conn.execute(
+                "SELECT measure_key, plan_key FROM dim_nba_campaign WHERE nba_run_id=? LIMIT 1", (run_id,)
+            ).fetchone()
+            mk = (dec and dec[0]) or (camp and camp[0]) or ""
+            pk = (dec and dec[1]) or (camp and camp[1]) or ""
+            # Look up names
+            plan_name = conn.execute("SELECT plan_name FROM dim_plan_contract WHERE plan_key=? LIMIT 1", (pk,)).fetchone()
+            measure_name = conn.execute("SELECT measure_code FROM dim_measure WHERE measure_key=? LIMIT 1", (mk,)).fetchone()
             sessions.append({
+                "nba_run_id": run_id,
                 "run_id": run_id,
-                "opportunity": opp[0] if opp else "",
-                "gaps_targeted": summary[0] if summary else 0,
-                "completed_at": summary[1] if summary else (started[0] if started else ""),
+                "measure_key": mk,
+                "plan_key": pk,
+                "measure_code": (measure_name and measure_name[0]) or mk,
+                "plan_name": (plan_name and plan_name[0]) or pk,
+                "opportunity": f"{(measure_name and measure_name[0]) or mk} × {(plan_name and plan_name[0]) or pk}",
+                "decision_count": (dec and dec[2]) or 0,
+                "gaps_targeted": (last_trace and last_trace[2]) or (dec and dec[2]) or 0,
+                "completed_at": (last_trace and last_trace[1]) or (started and started[0]) or "",
             })
     return sessions
 
@@ -3540,7 +3591,7 @@ def _ingest_csv(content: bytes, filename: str) -> dict:
     return {"status": "ok", "table": table, "rows_loaded": inserted, "filename": filename}
 
 
-def _ingest_xlsx(content: bytes, filename: str) -> dict:
+def _ingest_xlsx(content: bytes, filename: str, source_id: str = None) -> dict:
     """Parse an Excel workbook with automatic column-alias mapping.
 
     Handles both exact-schema sheets (column names already match DB) and
@@ -3591,6 +3642,11 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
         except Exception:
             return {}
 
+    # Derive source_id from filename if not provided
+    if source_id is None:
+        base = os.path.splitext(os.path.basename(filename))[0]
+        source_id = re.sub(r'[^a-zA-Z0-9_-]', '_', base)[:40] or "uploaded"
+
     results = []
 
     for sheet_name in wb.sheetnames:
@@ -3620,7 +3676,7 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
             tot  = _idx(raw_h, "total_members")
             inserted = 0
             with get_db() as conn:
-                conn.execute("DELETE FROM dim_plan_contract")
+                conn.execute("DELETE FROM dim_plan_contract WHERE source_id = ?", (source_id,))
                 for row in data:
                     pk = _val(row, pi)
                     if not pk:
@@ -3630,11 +3686,11 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
                             """INSERT OR REPLACE INTO dim_plan_contract
                                (plan_key, plan_name, region, segment,
                                 star_rating_current, star_rating_target,
-                                plan_annual_revenue, total_members)
-                               VALUES (?,?,?,?,?,?,?,?)""",
+                                plan_annual_revenue, total_members, source_id)
+                               VALUES (?,?,?,?,?,?,?,?,?)""",
                             (pk, _val(row, pn), _val(row, reg), _val(row, seg),
                              _val(row, csr), _val(row, tsr),
-                             _val(row, rev), _val(row, tot))
+                             _val(row, rev), _val(row, tot), source_id)
                         )
                         inserted += 1
                     except Exception:
@@ -3656,8 +3712,15 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
             pch  = _idx(raw_h, "preferred_channel")
             ins_m = ins_cp = 0
             with get_db() as conn:
-                conn.execute("DELETE FROM dim_member")
-                conn.execute("DELETE FROM dim_member_channel_pref")
+                conn.execute("DELETE FROM dim_member WHERE source_id = ?", (source_id,))
+                conn.execute("DELETE FROM dim_member_channel_pref WHERE member_key IN "
+                             "(SELECT member_key FROM dim_member WHERE source_id = ? OR "
+                             "(1=0))", (source_id,))
+                # Re-delete channel_pref based on member_keys we're about to insert
+                mk_set = [_val(r, mi) for r in data if _val(r, mi)]
+                if mk_set:
+                    placeholders_mk = ",".join("?" * len(mk_set))
+                    conn.execute(f"DELETE FROM dim_member_channel_pref WHERE member_key IN ({placeholders_mk})", mk_set)
                 for row in data:
                     mk = _val(row, mi)
                     if not mk:
@@ -3667,9 +3730,9 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
                         conn.execute(
                             """INSERT OR REPLACE INTO dim_member
                                (member_key, dob_year, gender, language_preference,
-                                digital_literacy_segment, socioeconomic_segment)
-                               VALUES (?,?,?,?,?,?)""",
-                            (mk, yr, _val(row, gen), _val(row, lang), _val(row, dls), _val(row, ses))
+                                digital_literacy_segment, socioeconomic_segment, source_id)
+                               VALUES (?,?,?,?,?,?,?)""",
+                            (mk, yr, _val(row, gen), _val(row, lang), _val(row, dls), _val(row, ses), source_id)
                         )
                         ins_m += 1
                     except Exception:
@@ -3706,13 +3769,13 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
             mk_map = _measure_key_map()
             inserted = 0
             with get_db() as conn:
-                conn.execute("DELETE FROM fact_member_gap")
+                conn.execute("DELETE FROM fact_member_gap WHERE source_id = ?", (source_id,))
                 for idx, row in enumerate(data):
                     member_key   = _val(row, mi, f"MBR{idx:05d}")
                     plan_key     = _val(row, pi, "P001")
                     measure_code = _val(row, mc, "UNK")
                     measure_key  = mk_map.get(measure_code, measure_code)
-                    mgk          = f"G_{plan_key}_{measure_code}_{member_key}"
+                    mgk          = f"G_{plan_key}_{measure_code}_{member_key}_{source_id}"
                     propensity   = row[prop] if prop >= 0 and prop < len(row) and row[prop] is not None else 0.5
                     try:
                         conn.execute(
@@ -3720,13 +3783,13 @@ def _ingest_xlsx(content: bytes, filename: str) -> dict:
                                (member_gap_key, member_key, measure_key, measure_code,
                                 plan_key, measurement_year, gap_status, gap_open_date,
                                 days_open, nba_propensity_score, upstream_recommended_channel,
-                                is_suppressed)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                is_suppressed, source_id)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                             (mgk, member_key, measure_key, measure_code, plan_key,
                              _val(row, yr, 2026), _val(row, gs, "Open"),
                              _val(row, gd), _val(row, dop),
                              propensity, _val(row, uch),
-                             _val(row, sup, "false"))
+                             _val(row, sup, "false"), source_id)
                         )
                         inserted += 1
                     except Exception:
@@ -3809,17 +3872,42 @@ _upload_status: dict = {}
 
 def _bg_ingest_and_analyze(files_data: list[tuple[str, bytes]], run_id: str):
     """Background: ingest all uploaded files then auto-run AI opportunity analysis."""
+    global active_source_id
     _upload_status[run_id] = {"phase": "ingesting", "results": [], "started_at": datetime.now().isoformat()}
     results = []
+
+    # Derive a source_id from the first filename
+    first_filename = files_data[0][0] if files_data else "upload"
+    base = os.path.splitext(os.path.basename(first_filename))[0]
+    upload_source_id = re.sub(r'[^a-zA-Z0-9_-]', '_', base)[:40] or "uploaded"
 
     for filename, content in files_data:
         if filename.lower().endswith(".db") or filename.lower().endswith(".sqlite") or filename.lower().endswith(".sqlite3"):
             r = _ingest_sqlite(content, filename)
         elif filename.lower().endswith(".xlsx") or filename.lower().endswith(".xls"):
-            r = _ingest_xlsx(content, filename)
+            r = _ingest_xlsx(content, filename, source_id=upload_source_id)
         else:
             r = _ingest_csv(content, filename)
         results.append(r)
+
+    # Register this upload as a data source and make it active
+    if not any(r.get("status") == "error" for r in results):
+        try:
+            with get_db() as conn:
+                # Count what was loaded
+                mc = conn.execute("SELECT COUNT(*) FROM dim_member WHERE source_id=?", (upload_source_id,)).fetchone()[0]
+                gc = conn.execute("SELECT COUNT(*) FROM fact_member_gap WHERE source_id=?", (upload_source_id,)).fetchone()[0]
+                pc = conn.execute("SELECT COUNT(*) FROM dim_plan_contract WHERE source_id=?", (upload_source_id,)).fetchone()[0]
+                conn.execute("UPDATE data_sources SET is_active=0")
+                conn.execute("""INSERT OR REPLACE INTO data_sources
+                    (source_id, source_name, source_type, file_name, uploaded_at,
+                     member_count, gap_count, plan_count, is_active, created_timestamp)
+                    VALUES (?,?,?,?,datetime('now'),?,?,?,1,datetime('now'))""",
+                    (upload_source_id, first_filename.replace(".xlsx","").replace(".csv","").replace("_"," ").title(),
+                     "xlsx", first_filename, mc, gc, pc))
+            active_source_id = upload_source_id
+        except Exception as e:
+            logging.warning(f"[ingest] Could not register source: {e}")
 
     errors = [r for r in results if r.get("status") == "error"]
     if errors:

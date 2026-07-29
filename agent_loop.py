@@ -46,6 +46,31 @@ def _db_conn():
     return conn
 
 
+def _active_source_id() -> str:
+    """Read the currently active data source from the DB."""
+    try:
+        conn = _db_conn()
+        row = conn.execute("SELECT source_id FROM data_sources WHERE is_active=1 LIMIT 1").fetchone()
+        conn.close()
+        return row[0] if row else "demo"
+    except Exception:
+        return "demo"
+
+
+def _source_gap_filter(src_id: str) -> str:
+    """Return SQL fragment to filter fact_member_gap by source."""
+    if src_id == "demo":
+        return "(g.source_id = 'demo' OR g.source_id IS NULL)"
+    return f"g.source_id = '{src_id}'"
+
+
+def _source_plan_filter(src_id: str) -> str:
+    """Return SQL fragment to filter dim_plan_contract by source."""
+    if src_id == "demo":
+        return "(p.source_id = 'demo' OR p.source_id IS NULL)"
+    return f"p.source_id = '{src_id}'"
+
+
 def _ensure_analysis_table():
     conn = _db_conn()
     try:
@@ -234,6 +259,53 @@ TOOLS = [
         }
     },
     {
+        "name": "write_campaign",
+        "description": (
+            "Persist the approved campaign design to dim_nba_campaign. Call once per campaign "
+            "after the plan manager confirms the channel strategy, frequency, and incentives."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nba_run_id": {"type": "string"},
+                "measure_key": {"type": "string"},
+                "plan_key": {"type": "string"},
+                "campaign_name": {"type": "string", "description": "Human-readable name, e.g. 'BCS P101 Mail Campaign'"},
+                "target_cohort_ids": {"type": "string", "description": "Comma-separated cohort IDs targeted"},
+                "channel_strategy": {"type": "string", "description": "e.g. 'Mail-primary with call fallback'"},
+                "frequency_plan": {"type": "string", "description": "e.g. '2 mail in 14 days, call day 21'"},
+                "message_template_id": {"type": "string", "description": "e.g. 'MAIL_BCS_EN', 'MAIL_BCS_ES'"},
+                "incentive_strategy": {"type": "string", "description": "e.g. 'GIFTCARD_25 for C1+C2, NONE for C3'"}
+            },
+            "required": ["nba_run_id", "measure_key", "plan_key", "campaign_name", "target_cohort_ids",
+                         "channel_strategy", "frequency_plan", "message_template_id", "incentive_strategy"]
+        }
+    },
+    {
+        "name": "write_outreach_plan",
+        "description": (
+            "Write per-contact outreach rows to fact_nba_outreach_plan — one row per member per "
+            "planned contact attempt. Also generates the member-facing message text. "
+            "Call for each cohort after the campaign is confirmed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nba_run_id": {"type": "string"},
+                "campaign_id": {"type": "string", "description": "campaign_id returned by write_campaign"},
+                "measure_key": {"type": "string"},
+                "plan_key": {"type": "string"},
+                "cohort_id": {"type": "string"},
+                "channel": {"type": "string", "description": "Mail, SMS, Call, or Email"},
+                "incentive_offered": {"type": "string", "description": "e.g. GIFTCARD_25 or NONE"},
+                "days_from_now": {"type": "integer", "description": "Planned contact offset in days from today"},
+                "message_template": {"type": "string", "description": "Plain-language message text for this cohort"}
+            },
+            "required": ["nba_run_id", "campaign_id", "measure_key", "plan_key", "cohort_id",
+                         "channel", "incentive_offered", "days_from_now", "message_template"]
+        }
+    },
+    {
         "name": "calculate_financial_impact",
         "description": (
             "Calculate CMS bonus impact, ROI, and outreach cost for a measure × plan opportunity. "
@@ -269,6 +341,10 @@ def _execute_tool(name: str, inputs: dict) -> Any:
         return _tool_write_session_decision(**inputs)
     if name == "write_trace":
         return _tool_write_trace(**inputs)
+    if name == "write_campaign":
+        return _tool_write_campaign(**inputs)
+    if name == "write_outreach_plan":
+        return _tool_write_outreach_plan(**inputs)
     if name == "get_historical_performance":
         return _tool_get_historical_performance(**inputs)
     if name == "calculate_financial_impact":
@@ -277,11 +353,14 @@ def _execute_tool(name: str, inputs: dict) -> Any:
 
 
 def _tool_query_opportunities(measure_key=None, plan_key=None, min_open_gaps=1):
+    src = _active_source_id()
     conn = _db_conn()
     try:
         where_clauses = [
             "LOWER(g.gap_status) IN ('open','borderline')",
             "LOWER(g.is_suppressed) != 'true'",
+            _source_gap_filter(src),
+            _source_plan_filter(src),
         ]
         params = []
         if measure_key:
@@ -292,6 +371,11 @@ def _tool_query_opportunities(measure_key=None, plan_key=None, min_open_gaps=1):
             params.append(plan_key)
 
         where_sql = " AND ".join(where_clauses)
+        # Build a version without status/source filters for totals
+        totals_where = " AND ".join([_source_gap_filter(src), _source_plan_filter(src)] +
+                                    (["g.measure_key = ?"] if measure_key else []) +
+                                    (["g.plan_key = ?"] if plan_key else []))
+        totals_params = ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])
 
         rows = conn.execute(f"""
             SELECT
@@ -301,15 +385,15 @@ def _tool_query_opportunities(measure_key=None, plan_key=None, min_open_gaps=1):
                 p.total_members, p.plan_pmpm_monthly,
                 p.star_rating_current, p.star_rating_target,
                 COUNT(DISTINCT CASE WHEN {where_sql} THEN g.member_key END) AS open_gaps,
-                COUNT(DISTINCT g.member_key) AS total_eligible,
-                SUM(CASE WHEN LOWER(g.gap_status)='closed' THEN 1 ELSE 0 END) AS closed_gaps,
+                COUNT(DISTINCT CASE WHEN {totals_where} THEN g.member_key END) AS total_eligible,
+                SUM(CASE WHEN {totals_where} AND LOWER(g.gap_status)='closed' THEN 1 ELSE 0 END) AS closed_gaps,
                 ROUND(AVG(CASE WHEN {where_sql} THEN g.nba_propensity_score END), 4) AS avg_propensity
             FROM fact_member_gap g
             JOIN dim_measure       m ON m.measure_key = g.measure_key
             JOIN dim_plan_contract p ON p.plan_key    = g.plan_key
             GROUP BY m.measure_key, p.plan_key
             HAVING open_gaps >= ?
-        """, params * 2 + [min_open_gaps]).fetchall()
+        """, params * 2 + totals_params * 2 + [min_open_gaps]).fetchall()
 
         result = []
         for r in rows:
@@ -323,7 +407,8 @@ def _tool_query_opportunities(measure_key=None, plan_key=None, min_open_gaps=1):
 
 
 def _tool_query_members(measure_key, plan_key, gap_status_filter="open_or_borderline", limit=50):
-    limit = min(int(limit), 100)  # cap at 100 to keep AI context manageable
+    limit = min(int(limit), 100)
+    src = _active_source_id()
     conn = _db_conn()
     try:
         if gap_status_filter == "open_or_borderline":
@@ -345,6 +430,7 @@ def _tool_query_members(measure_key, plan_key, gap_status_filter="open_or_border
             WHERE g.measure_key = ? AND g.plan_key = ?
               AND {status_sql}
               AND LOWER(g.is_suppressed) != 'true'
+              AND {_source_gap_filter(src)}
             ORDER BY g.nba_propensity_score DESC
             LIMIT ?
         """, (measure_key, plan_key, limit)).fetchall()
@@ -438,6 +524,65 @@ def _tool_write_trace(
         """, (nba_run_id, ts, agent, step, input_summary, output_summary, affected_population_count))
         conn.commit()
         return {"status": "ok", "timestamp": ts}
+    finally:
+        conn.close()
+
+
+def _tool_write_campaign(
+    nba_run_id, measure_key, plan_key, campaign_name, target_cohort_ids,
+    channel_strategy, frequency_plan, message_template_id, incentive_strategy
+):
+    conn = _db_conn()
+    try:
+        ts = datetime.now().isoformat()
+        campaign_id = f"C_{nba_run_id}_{measure_key}_{plan_key}"
+        conn.execute("""
+            INSERT OR REPLACE INTO dim_nba_campaign
+            (campaign_id, nba_run_id, measure_key, plan_key, campaign_name,
+             target_cohort_ids, channel_strategy, frequency_plan,
+             message_template_id, incentive_strategy, created_timestamp)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (campaign_id, nba_run_id, measure_key, plan_key, campaign_name,
+              target_cohort_ids, channel_strategy, frequency_plan,
+              message_template_id, incentive_strategy, ts))
+        conn.commit()
+        return {"status": "ok", "campaign_id": campaign_id}
+    finally:
+        conn.close()
+
+
+def _tool_write_outreach_plan(
+    nba_run_id, campaign_id, measure_key, plan_key, cohort_id,
+    channel, incentive_offered, days_from_now, message_template
+):
+    conn = _db_conn()
+    try:
+        ts = datetime.now().isoformat()
+        from datetime import timedelta
+        planned_dt = (datetime.now() + timedelta(days=days_from_now)).strftime("%Y-%m-%d")
+
+        # Get all member_gap_keys for this cohort from decisions
+        rows = conn.execute("""
+            SELECT member_gap_key FROM fact_nba_claude_decision
+            WHERE nba_run_id=? AND measure_key=? AND plan_key=? AND cohort_id=?
+        """, (nba_run_id, measure_key, plan_key, cohort_id)).fetchall()
+
+        written = 0
+        for r in rows:
+            mgk = r[0]
+            contact_id = f"OC_{nba_run_id}_{mgk}_{cohort_id}"
+            conn.execute("""
+                INSERT OR REPLACE INTO fact_nba_outreach_plan
+                (nba_run_id, contact_id, member_gap_key, campaign_id, channel,
+                 planned_datetime, message_template_id, incentive_offered,
+                 status, created_timestamp, generated_message)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """, (nba_run_id, contact_id, mgk, campaign_id, channel,
+                  planned_dt, "TMPL_" + cohort_id, incentive_offered,
+                  "PLANNED", ts, message_template))
+            written += 1
+        conn.commit()
+        return {"status": "ok", "rows_written": written, "cohort_id": cohort_id, "planned_date": planned_dt}
     finally:
         conn.close()
 
@@ -723,18 +868,19 @@ Your job is to design a campaign for approved cohorts: channel strategy, frequen
 Steps:
 1. Call query_members to review member characteristics (check channel opt-ins)
 2. Design a campaign: primary channel, fallback channel, frequency plan, incentive tier
-3. Call write_session_decision to update decisions with nba_action_type, final_channel, final_incentive
-4. Call write_trace with step CAMPAIGN_DESIGNED
+3. Call write_session_decision to update decisions with nba_action_type, final_channel, final_incentive for each cohort
+4. Call write_campaign to persist the campaign design (use campaign_name like 'BCS P101 Mail Campaign')
+5. Call write_trace with step CAMPAIGN_DESIGNED
 
 Guidelines:
-- Tier-1 (high propensity, digital): SMS or email primary, no incentive or $15 gift card
-- Tier-2 (medium propensity): SMS + call fallback, $25 gift card
-- Tier-3 (low propensity, language barrier): call primary, $25-$50 gift card, plain language
+- Mail-only members: use Mail as channel, $25 gift card for high/mid propensity, NONE for low
+- Digital members: SMS or email primary, call fallback
+- Language barrier: use language-matched templates
 
 Return JSON with keys: campaign_id, channel_strategy, frequency_plan, incentive_strategy, message_theme, estimated_contacts (int)""",
             "user": f"""Design campaign for NBA run {nba_run_id}, measure {measure_key}, plan {plan_key}.
 
-Query members, design an appropriate channel + incentive strategy, update decisions, and trace your work.
+Query members, design channel + incentive strategy, update decisions, call write_campaign, and trace your work.
 Use nba_run_id: {nba_run_id} in all write calls."""
         },
         "outreach": {
@@ -743,14 +889,21 @@ Use nba_run_id: {nba_run_id} in all write calls."""
 Your job is to translate the approved campaign into a concrete outreach schedule.
 
 Steps:
-1. Call query_members to get the final member list for outreach
-2. Call write_trace with step OUTREACH_PLAN_GENERATED, including counts by channel
-3. Summarize the plan: contacts by channel, timeline, expected Stars impact
+1. Query dim_nba_campaign to get the campaign_id for this run (use query_members to get member list)
+2. For each cohort in the campaign, call write_outreach_plan with:
+   - campaign_id from write_campaign result
+   - channel, incentive_offered matching the cohort
+   - days_from_now: 7 for priority cohorts, 14 for mid, 21 for low
+   - message_template: a plain-language, Medicare-appropriate message for that cohort
+3. Call write_trace with step OUTREACH_PLAN_GENERATED, including counts by channel
+4. Summarize the plan: contacts by channel, timeline, expected Stars impact
 
 Return JSON with keys: total_contacts (int), by_channel (dict), timeline_days (int), expected_gap_closures (int), expected_stars_lift (float)""",
             "user": f"""Generate outreach plan for NBA run {nba_run_id}, measure {measure_key}, plan {plan_key}.
 
-Query the planned members, write the final trace entry, and return a concise outreach summary.
+First get the campaign from the DB: campaign_id = 'C_{nba_run_id}_{measure_key}_{plan_key}'.
+For each cohort in fact_nba_claude_decision, call write_outreach_plan with a real message template.
+Then write the final trace and return a concise outreach summary.
 Use nba_run_id: {nba_run_id} in all write calls."""
         }
     }

@@ -3743,7 +3743,14 @@ function dsHandleDropMain(e) {
 
 function dsHandleFileMain(file) {
   DS.file = file;
+  DS.importResult = null; DS.importing = false;
+  // Open the modal immediately so user doesn't have to click the button separately
+  DS.modalOpen = true;
   renderDataSources();
+  setTimeout(()=>{
+    const dz=document.getElementById('ds-drop-zone');
+    if(dz) dz.onclick=()=>document.getElementById('ds-file-input')?.click();
+  },0);
 }
 
 function dsRenderModalBody() {
@@ -3816,7 +3823,8 @@ function dsRenderModal() {
 }
 
 function dsOpenUploadModal() {
-  DS.modalOpen = true; DS.file = null; DS.importResult = null; DS.importing = false;
+  DS.modalOpen = true; DS.importResult = null; DS.importing = false;
+  // Don't clear DS.file — preserve any file already picked via drag-drop
   renderDataSources();
   setTimeout(()=>{
     const dz=document.getElementById('ds-drop-zone');
