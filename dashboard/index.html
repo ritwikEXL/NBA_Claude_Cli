@@ -3613,7 +3613,7 @@ async function renderDataSources() {
     <!-- Add New Source -->
     <div class="ds-section">
       <div class="ds-section-title">Connect a New Data Source</div>
-      <div class="ds-section-sub">Upload your own member, gap, or plan data to run accurate NBA opportunity analysis.</div>
+      <div class="ds-section-sub">Upload your Excel or CSV file — member roster, care gaps, and plan configuration are all detected automatically.</div>
 
       <!-- Drag-drop zone -->
       <div id="drop-zone" class="ds-drop-zone" style="margin-top:.85rem"
@@ -3621,19 +3621,17 @@ async function renderDataSources() {
         ondragleave="this.classList.remove('dragover')"
         ondrop="dsHandleDropMain(event)"
         onclick="document.getElementById('file-input-main').click()">
-        <div class="ds-drop-icon">📂</div>
-        <p style="font-size:.85rem;color:var(--g600);margin:.25rem 0">Drag &amp; drop your CSV file here</p>
+        <div class="ds-drop-icon">📊</div>
+        <p style="font-size:.85rem;color:var(--g600);margin:.25rem 0">Drag &amp; drop your Excel or CSV file here</p>
         <p style="font-size:.76rem;color:var(--g400)">or <span style="color:var(--teal);cursor:pointer;text-decoration:underline">browse files</span></p>
         <input type="file" id="file-input-main" accept=".csv,.xlsx" style="display:none" onchange="dsHandleFileMain(this.files[0])">
-        <p style="font-size:.7rem;color:var(--g300);margin-top:.4rem">Accepts: .csv · Max 50MB</p>
+        <p style="font-size:.7rem;color:var(--g300);margin-top:.4rem">Accepts: .xlsx (recommended) · .csv · Max 50MB</p>
       </div>
 
       ${DS.file?`<div class="ds-file-chosen" style="margin-top:.5rem">✔ ${DS.file.name} (${(DS.file.size/1024).toFixed(1)} KB) — <span style="color:var(--g500)">ready to upload</span></div>`:''}
 
       <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
-        <button class="ds-btn" onclick="DS.dataType='members';dsOpenModal()">Upload Members</button>
-        <button class="ds-btn" onclick="DS.dataType='gaps';dsOpenModal()">Upload Gaps</button>
-        <button class="ds-btn" onclick="DS.dataType='plans';dsOpenModal()">Upload Plans</button>
+        <button class="ds-btn" onclick="dsOpenUploadModal()">⬆ Upload &amp; Analyze</button>
       </div>
     </div>
 
@@ -3749,104 +3747,67 @@ function dsHandleFileMain(file) {
 }
 
 function dsRenderModalBody() {
-  const step = DS.step;
-  const stepLabels = ['Select Type','Download Template','Upload File','Preview','Import'];
+  const uploading = DS.importing;
+  const r = DS.importResult;
 
-  const progressHtml = `<div style="display:flex;gap:.3rem;margin-bottom:1.2rem">${stepLabels.map((l,i)=>`
-    <div style="flex:1;text-align:center">
-      <div style="width:24px;height:24px;border-radius:50%;margin:0 auto .2rem;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center;
-        background:${i+1<step?'var(--green)':i+1===step?'var(--teal)':'var(--g200)'};
-        color:${i+1<=step?'var(--white)':'var(--g600)'};">${i+1<step?'✓':i+1}</div>
-      <div style="font-size:.65rem;color:${i+1===step?'var(--teal)':'var(--g400)'};font-weight:${i+1===step?700:400}">${l}</div>
-    </div>`).join('<div style="flex:0;padding-top:.7rem;color:var(--g300)">›</div>')}</div>`;
-
-  let body = '';
-
-  if (step === 1) {
-    body = `<div class="ds-step-label">Step 1 — What type of data are you uploading?</div>
-    <div class="ds-step-body ds-radio-group">
-      ${Object.entries(DS_TYPES).map(([k,v])=>`
-      <label class="ds-radio-opt">
-        <input type="radio" name="ds-type" value="${k}" ${DS.dataType===k?'checked':''} onchange="DS.dataType=this.value;dsRenderModal()">
-        <span>${v.label}</span>
-      </label>`).join('')}
-    </div>
-    <div style="display:flex;justify-content:flex-end;gap:.5rem">
-      <button class="ds-btn" onclick="DS.step=2;dsRenderModal()">Next →</button>
-    </div>`;
-  } else if (step === 2) {
-    body = `<div class="ds-step-label">Step 2 — Download the template for your data type</div>
-    <div class="ds-step-body">
-      <p style="font-size:.82rem;color:var(--g600);margin-bottom:.75rem">Download the template, fill it in with your data, then come back to upload it.</p>
-      <button class="ds-btn" onclick="dsDownloadTemplate('${DS.dataType}')">⬇ Download ${DS_TYPES[DS.dataType].label} Template</button>
-    </div>
-    <div style="display:flex;justify-content:space-between;gap:.5rem">
-      <button class="ds-btn-outline" onclick="DS.step=1;dsRenderModal()">← Back</button>
-      <button class="ds-btn" onclick="DS.step=3;dsRenderModal()">Next →</button>
-    </div>`;
-  } else if (step === 3) {
-    body = `<div class="ds-step-label">Step 3 — Select your CSV file</div>
-    <div class="ds-step-body">
-      <div class="ds-drop-zone" id="ds-drop-zone"
-        ondragover="event.preventDefault();this.classList.add('dragover')"
-        ondragleave="this.classList.remove('dragover')"
-        ondrop="dsHandleDrop(event)">
-        <div class="ds-drop-icon">📁</div>
-        <div class="ds-drop-hint">Drag & drop your CSV here or <strong>click to browse</strong></div>
-        <input type="file" accept=".csv,.xlsx" style="display:none" id="ds-file-input" onchange="dsHandleFile(this.files[0])">
-      </div>
-      ${DS.file ? `<div class="ds-file-chosen">✔ ${DS.file.name} (${(DS.file.size/1024).toFixed(1)} KB)</div>` : ''}
-    </div>
-    <div style="display:flex;justify-content:space-between;gap:.5rem">
-      <button class="ds-btn-outline" onclick="DS.step=2;dsRenderModal()">← Back</button>
-      <button class="ds-btn" ${!DS.file?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="DS.step=4;dsParseAndPreview()">Preview →</button>
-    </div>`;
-  } else if (step === 4) {
-    const missingCols = dsMissingCols();
-    body = `<div class="ds-step-label">Step 4 — Preview (first 5 rows)</div>
-    <div class="ds-step-body">
-      ${DS.parsedHeaders.length ? `
-        <div style="font-size:.78rem;color:var(--g600);margin-bottom:.4rem">${DS.parsedRows.length.toLocaleString()} rows detected · ${DS.parsedHeaders.length} columns</div>
-        ${missingCols.length ? `<div class="ds-error-list">⚠ Missing required columns: <strong>${missingCols.join(', ')}</strong></div>` : ''}
-        <div class="ds-preview-wrap">
-          <table>
-            <thead><tr>${DS.parsedHeaders.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-            <tbody>${DS.parsedRows.slice(0,5).map(row=>`<tr>${DS.parsedHeaders.map(h=>`<td>${row[h]||''}</td>`).join('')}</tr>`).join('')}</tbody>
-          </table>
-        </div>` : '<div class="ds-error-list">Could not parse file. Ensure it is a valid CSV.</div>'}
-    </div>
-    <div style="display:flex;justify-content:space-between;gap:.5rem">
-      <button class="ds-btn-outline" onclick="DS.step=3;dsRenderModal()">← Back</button>
-      <button class="ds-btn" ${missingCols.length||!DS.parsedRows.length?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="dsImport()">
-        Import ${DS.parsedRows.length.toLocaleString()} Rows →
-      </button>
-    </div>`;
-  } else if (step === 5) {
-    const r = DS.importResult || {};
-    body = `<div class="ds-step-label">Step 5 — Import Result</div>
-    <div class="ds-step-body">
-      ${DS.importing ? `<div style="text-align:center;padding:1.5rem"><span class="ds-spinner" style="border-color:rgba(241,90,34,.3);border-top-color:var(--teal);width:24px;height:24px;border-width:3px"></span><p style="margin-top:.5rem;color:var(--g600)">Importing…</p></div>` :
-        r.error ? `<div class="ds-error-list">${r.error}</div>` :
-        `<div class="ds-success-banner">
-          ✔ Import complete — <strong>${r.imported||0} rows imported</strong>${r.skipped ? `, ${r.skipped} skipped` : ''}
-          ${r.errors?.length ? `<br>⚠ ${r.errors.length} row errors` : ''}
-        </div>`
-      }
-    </div>
-    ${!DS.importing ? `<div style="display:flex;justify-content:space-between;gap:.5rem">
-      <button class="ds-btn-outline" onclick="dsCloseModal();loadDataStatus().then(()=>renderDataSources())">Close</button>
-      ${!r.error ? `<button class="ds-btn" onclick="dsCloseModal();S.tab='opp';render()">View Opportunities →</button>` : ''}
-    </div>` : ''}`;
+  if (uploading) {
+    return `
+      <div style="text-align:center;padding:2rem 1rem">
+        <div class="loading-spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto .75rem"></div>
+        <div style="font-size:.9rem;font-weight:600;color:var(--g800);margin-bottom:.35rem">Uploading &amp; Analyzing…</div>
+        <div style="font-size:.78rem;color:var(--g500)">Detecting data types, importing rows, and running AI analysis. This takes about 15–30 seconds.</div>
+      </div>`;
   }
 
-  return progressHtml + body;
+  if (r) {
+    if (r.error) {
+      return `
+        <div class="ds-error-list" style="margin:.5rem 0">${r.error}</div>
+        <div style="display:flex;justify-content:space-between;gap:.5rem;margin-top:1rem">
+          <button class="ds-btn-outline" onclick="dsCloseModal();loadDataStatus().then(()=>renderDataSources())">Close</button>
+          <button class="ds-btn" onclick="DS.importResult=null;DS.file=null;dsRenderModal()">Try Again</button>
+        </div>`;
+    }
+    const tables = r.tables_loaded || [];
+    const tableList = tables.length ? `<div style="font-size:.78rem;color:var(--g600);margin-top:.5rem">Loaded: ${tables.join(' · ')}</div>` : '';
+    return `
+      <div class="ds-success-banner" style="margin:.5rem 0">
+        ✔ <strong>${r.rows_imported||r.imported||0} rows imported</strong> — AI analysis running in background
+        ${tableList}
+      </div>
+      <div style="font-size:.78rem;color:var(--g500);margin:.6rem 0">Head to <strong>Opportunities</strong> in a few seconds to see Claude's recommendations.</div>
+      <div style="display:flex;justify-content:space-between;gap:.5rem;margin-top:1rem">
+        <button class="ds-btn-outline" onclick="dsCloseModal();loadDataStatus().then(()=>renderDataSources())">Close</button>
+        <button class="ds-btn" onclick="dsCloseModal();S.tab='opp';render()">View Opportunities →</button>
+      </div>`;
+  }
+
+  // Default: file picker
+  return `
+    <div style="font-size:.82rem;color:var(--g600);margin-bottom:.85rem">
+      Upload your Excel workbook or CSV file. Members, gaps, and plans are all detected automatically — no need to upload them separately.
+    </div>
+    <div class="ds-drop-zone" id="ds-drop-zone"
+      ondragover="event.preventDefault();this.classList.add('dragover')"
+      ondragleave="this.classList.remove('dragover')"
+      ondrop="dsHandleDrop(event)">
+      <div class="ds-drop-icon">📊</div>
+      <div class="ds-drop-hint">Drag &amp; drop your file here or <strong>click to browse</strong></div>
+      <input type="file" accept=".csv,.xlsx" style="display:none" id="ds-file-input" onchange="dsHandleFile(this.files[0])">
+      <div style="font-size:.7rem;color:var(--g300);margin-top:.3rem">Accepts: .xlsx (recommended) · .csv · Max 50MB</div>
+    </div>
+    ${DS.file ? `<div class="ds-file-chosen">✔ ${DS.file.name} (${(DS.file.size/1024).toFixed(1)} KB)</div>` : ''}
+    <div style="display:flex;justify-content:space-between;gap:.5rem;margin-top:1rem">
+      <button class="ds-btn-outline" onclick="dsCloseModal()">Cancel</button>
+      <button class="ds-btn" ${!DS.file?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="dsImport()">⬆ Upload &amp; Analyze</button>
+    </div>`;
 }
 
 function dsRenderModal() {
   const modal = document.getElementById('ds-modal');
   if (modal) modal.innerHTML = `
     <div class="ds-modal-hdr">
-      <span class="ds-modal-title">Upload Data File</span>
+      <span class="ds-modal-title">Upload Data</span>
       <button class="ds-modal-close" onclick="dsCloseModal()">✕</button>
     </div>
     ${dsRenderModalBody()}`;
@@ -3854,15 +3815,16 @@ function dsRenderModal() {
   if (dz) dz.onclick = () => document.getElementById('ds-file-input')?.click();
 }
 
-function dsOpenModal() {
-  DS.modalOpen = true; DS.step = 1; DS.file = null;
-  DS.parsedRows = []; DS.parsedHeaders = []; DS.importResult = null;
+function dsOpenUploadModal() {
+  DS.modalOpen = true; DS.file = null; DS.importResult = null; DS.importing = false;
   renderDataSources();
   setTimeout(()=>{
     const dz=document.getElementById('ds-drop-zone');
     if(dz) dz.onclick=()=>document.getElementById('ds-file-input')?.click();
   },0);
 }
+
+function dsOpenModal() { dsOpenUploadModal(); }
 
 function dsCloseModal() {
   DS.modalOpen = false;
@@ -3935,16 +3897,39 @@ function dsMissingCols() {
 
 async function dsImport() {
   if (!DS.file) return;
-  DS.step = 5; DS.importing = true; DS.importResult = null;
+  DS.importing = true; DS.importResult = null;
   dsRenderModal();
   try {
     const fd = new FormData();
-    fd.append('file', DS.file);
-    const endpoint = DS_TYPES[DS.dataType]?.endpoint;
-    const res = await fetch(`${API}${endpoint}`, { method: 'POST', body: fd });
-    DS.importResult = await res.json();
-    if (!res.ok) DS.importResult = { error: DS.importResult.error || `HTTP ${res.status}` };
-    if (res.ok) {
+    fd.append('files', DS.file);
+    const res = await fetch(`${API}/datasource/upload`, { method: 'POST', body: fd });
+    const json = await res.json();
+    if (!res.ok) {
+      DS.importResult = { error: json.detail || json.error || `Upload failed (HTTP ${res.status})` };
+    } else {
+      // Poll status until done
+      const runId = json.run_id;
+      let done = false;
+      for (let i = 0; i < 60 && !done; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const st = await fetch(`${API}/datasource/status/${runId}`);
+          if (st.ok) {
+            const s = await st.json();
+            if (s.phase === 'complete' || s.phase === 'failed') {
+              done = true;
+              if (s.phase === 'failed') {
+                DS.importResult = { error: (s.results||[]).map(r=>r.error||r.message||'').filter(Boolean).join('; ') || 'Import failed' };
+              } else {
+                const totalRows = (s.results||[]).reduce((acc,r)=>acc+(r.imported||r.rows_imported||0),0);
+                const tables = (s.results||[]).map(r=>r.table||r.tables||'').filter(Boolean);
+                DS.importResult = { rows_imported: totalRows, tables_loaded: tables };
+              }
+            }
+          }
+        } catch(e) { /* keep polling */ }
+      }
+      if (!done) DS.importResult = { rows_imported: json.rows_received || 0, tables_loaded: [] };
       await loadSources();
       loadData();
     }
