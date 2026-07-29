@@ -166,6 +166,7 @@ with get_db() as _mc:
         "ALTER TABLE dim_measure ADD COLUMN age_gender_eligibility TEXT DEFAULT ''",
         "ALTER TABLE dim_measure ADD COLUMN nba_default_playbook TEXT DEFAULT ''",
         "ALTER TABLE whatsapp_conversations ADD COLUMN channel TEXT DEFAULT 'WHATSAPP'",
+        "ALTER TABLE campaign_evaluations ADD COLUMN source_id TEXT DEFAULT 'demo'",
     ]:
         try:
             _mc.execute(_col)
@@ -2505,6 +2506,13 @@ def _run_evaluation(run_id: str) -> dict:
         )
 
         eval_id = f"EVAL_{run_id[4:]}_{window}D_{today_s}"
+        # Determine source_id for this run via the outreach plan → member_gap table
+        src_row = conn.execute(
+            """SELECT g.source_id FROM fact_nba_outreach_plan o
+               JOIN fact_member_gap g ON g.member_gap_key = o.member_gap_key
+               WHERE o.nba_run_id=? LIMIT 1""", (run_id,)
+        ).fetchone()
+        eval_source_id = (src_row["source_id"] if src_row else None) or active_source_id
         conn.execute(
             """INSERT OR REPLACE INTO campaign_evaluations
                (evaluation_id, nba_run_id, campaign_id, evaluation_date, evaluation_window,
@@ -2512,13 +2520,14 @@ def _run_evaluation(run_id: str) -> dict:
                 outreach_date, star_rating_current, star_rating_target,
                 total_members_contacted, gaps_closed_actual, gaps_closed_expected,
                 actual_closure_rate, expected_closure_rate, performance_status,
-                stars_impact_actual, stars_impact_projected, executive_summary, created_timestamp)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                stars_impact_actual, stars_impact_projected, executive_summary, created_timestamp,
+                source_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (eval_id, run_id, camp_id, today_s, window,
              measure_code, measure_name_val, plan_key_val, plan_name_val,
              outreach_date_val, star_current, star_target,
              total, closed_actual, exp_closed, actual_rate, exp_rate, perf_status,
-             stars_actual, stars_proj, summary, now_iso)
+             stars_actual, stars_proj, summary, now_iso, eval_source_id)
         )
 
         # Member-level evaluations
@@ -2635,14 +2644,23 @@ def _run_evaluation(run_id: str) -> dict:
 
 @app.get("/evaluate/all")
 def get_all_evaluations():
+    src = active_source_id
+    # Filter uses unaliased column in subquery, aliased in outer
+    src_filter_outer = "(ce.source_id='demo' OR ce.source_id IS NULL)" if src == "demo" else f"ce.source_id='{src}'"
+    src_filter_inner = "(source_id='demo' OR source_id IS NULL)" if src == "demo" else f"source_id='{src}'"
     with get_db() as conn:
+        # Backfill source_id for legacy rows that have none
+        conn.execute("UPDATE campaign_evaluations SET source_id='demo' WHERE source_id IS NULL OR source_id=''")
         rows = conn.execute(
-            """SELECT ce.* FROM campaign_evaluations ce
+            f"""SELECT ce.* FROM campaign_evaluations ce
                INNER JOIN (
                    SELECT nba_run_id, MAX(created_timestamp) AS latest
-                   FROM campaign_evaluations GROUP BY nba_run_id
+                   FROM campaign_evaluations
+                   WHERE {src_filter_inner}
+                   GROUP BY nba_run_id
                ) best ON ce.nba_run_id = best.nba_run_id
                       AND ce.created_timestamp = best.latest
+               WHERE {src_filter_outer}
                ORDER BY ce.evaluation_date DESC, ce.nba_run_id"""
         ).fetchall()
         total_campaigns = len(rows)
