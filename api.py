@@ -846,13 +846,14 @@ def trigger_analysis(measure_key: str, plan_key: str, force: bool = False):
 
     # Run async — return job_id immediately so the request doesn't time out
     import uuid
+    src = active_source_id  # capture at request time so the thread uses the right source
     job_id = f"single_{measure_key}_{plan_key}_{str(uuid.uuid4())[:6]}"
     _analysis_jobs[job_id] = {"status": "running", "measure_key": measure_key, "plan_key": plan_key}
 
     def run():
         try:
             from financial_analysis_loop import analyze_opportunity
-            result = analyze_opportunity(measure_key, plan_key)
+            result = analyze_opportunity(measure_key, plan_key, source_id=src)
             _analysis_jobs[job_id]["status"] = "complete"
             _analysis_jobs[job_id]["analysis"] = result
         except Exception as e:
@@ -867,14 +868,16 @@ def trigger_analysis(measure_key: str, plan_key: str, force: bool = False):
 # ── POST /financial/analyze-all ───────────────────────────────────────────────
 
 @app.post("/financial/analyze-all")
-def trigger_analyze_all(source_id: str = "demo"):
+def trigger_analyze_all(source_id: str = None):
+    # Default to the currently active source rather than always "demo"
+    src = source_id or active_source_id
     import uuid
     job_id = str(uuid.uuid4())[:8]
     _analysis_jobs[job_id] = {"status": "running", "results": [], "total": 0, "done": 0}
 
     def run():
         from financial_analysis_loop import analyze_all_opportunities
-        results = analyze_all_opportunities(source_id)
+        results = analyze_all_opportunities(src)
         _analysis_jobs[job_id]["results"] = results
         _analysis_jobs[job_id]["status"] = "complete"
         _analysis_jobs[job_id]["done"] = len(results)
@@ -3721,9 +3724,9 @@ def _ingest_xlsx(content: bytes, filename: str, source_id: str = None) -> dict:
             mi   = _idx(raw_h, "member_id",              "member_key")
             dob  = _idx(raw_h, "date_of_birth",          "dob_year")
             gen  = _idx(raw_h, "gender")
-            lang = _idx(raw_h, "language_preference")
-            dls  = _idx(raw_h, "digital_literacy_segment")
-            ses  = _idx(raw_h, "socioeconomic_segment")
+            lang = _idx(raw_h, "language_preference", "language")
+            dls  = _idx(raw_h, "digital_literacy_segment", "digital_literacy")
+            ses  = _idx(raw_h, "socioeconomic_segment", "socioeconomic")
             ema  = _idx(raw_h, "email_allowed")
             sms  = _idx(raw_h, "sms_allowed")
             cal  = _idx(raw_h, "call_allowed")
@@ -3848,7 +3851,8 @@ def _ingest_xlsx(content: bytes, filename: str, source_id: str = None) -> dict:
     loaded = [r for r in results if r.get("status") == "ok"]
     if not loaded:
         return {"status": "error", "message": f"No sheets matched known tables. Details: {results}"}
-    return {"status": "ok", "filename": filename, "sheets": results}
+    total_imported = sum(r.get("rows_loaded", 0) for r in loaded)
+    return {"status": "ok", "filename": filename, "sheets": results, "rows_imported": total_imported}
 
 
 def _ingest_sqlite(content: bytes, filename: str) -> dict:
