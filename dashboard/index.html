@@ -676,6 +676,7 @@ async function runAiAnalysis(measureKey,planKey){
       sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
       sessionStorage.setItem('nba_analysisKey',key);
       sessionStorage.setItem('nba_tab','opp');
+      if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
       window.location.reload();
       return;
     }
@@ -700,6 +701,7 @@ async function runAiAnalysis(measureKey,planKey){
               sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
               sessionStorage.setItem('nba_analysisKey',key);
               sessionStorage.setItem('nba_tab','opp');
+              if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
               window.location.reload();
             }else{
               const errMsg=job.analysis&&job.analysis.error?job.analysis.error:'Analysis ran but produced no output — check ANTHROPIC_API_KEY in .env';
@@ -711,6 +713,7 @@ async function runAiAnalysis(measureKey,planKey){
             sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
             sessionStorage.setItem('nba_analysisKey',key);
             sessionStorage.setItem('nba_tab','opp');
+            if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
             window.location.reload();
           }
         }else if(job&&job.status==='error'){
@@ -3539,6 +3542,8 @@ checkApiHealth();
 loadData().then(loadLatestSession).then(()=>{
   const _savedTab=sessionStorage.getItem('nba_tab');
   if(_savedTab){S.tab=_savedTab;sessionStorage.removeItem('nba_tab');}
+  const _savedBudget=sessionStorage.getItem('nba_oppBudget');
+  if(_savedBudget){S.oppBudget=parseInt(_savedBudget,10);S.oppBudgetInit=true;sessionStorage.removeItem('nba_oppBudget');}
   if(S._highlightCardKey){
     _aiToast('✓ AI analysis complete — results shown below',false);
     // Scroll to the analyzed card after a brief delay for DOM settle
