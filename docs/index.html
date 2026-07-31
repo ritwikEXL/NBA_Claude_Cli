@@ -2818,6 +2818,28 @@ function renderOpp(){
     <div style="margin-bottom:1.1rem">
       <div style="font-weight:700;font-size:.95rem;color:var(--g900)">Portfolio Budget Planner</div>
       <div style="font-size:.76rem;color:var(--g400);margin-top:.2rem">Enter your available outreach budget. Campaigns ranked by ROI and allocated in order. <span style="color:var(--amber)">All outcomes projected/estimated.</span> <span style="font-size:.67rem;color:var(--g500)">(full portfolio — all ${fin.length} opportunities across all plans)</span></div>
+      <!-- PM-facing legend -->
+      <div style="margin-top:.85rem;display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+        <!-- Funding status legend -->
+        <div style="background:var(--g50);border:1px solid var(--g200);border-radius:8px;padding:.65rem .85rem;font-size:.73rem;line-height:1.7">
+          <div style="font-weight:700;color:var(--g800);margin-bottom:.3rem;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em">Funding Status</div>
+          <div style="display:flex;flex-direction:column;gap:.18rem">
+            <div><span style="color:var(--teal);font-weight:700">● Full</span> — All 3 tiers funded. Every eligible member contacted via their preferred channel (digital + phone + mail). Maximum gap closures.</div>
+            <div><span style="color:var(--amber);font-weight:700">◑ Partial</span> — Budget covers Tier 1 or Tier 1+2 only. High-propensity members contacted first; lower-propensity skipped this cycle.</div>
+            <div><span style="color:var(--g400);font-weight:700">○ Skip</span> — Budget exhausted. Opportunity identified but no outreach this cycle.</div>
+          </div>
+        </div>
+        <!-- Tier legend -->
+        <div style="background:var(--g50);border:1px solid var(--g200);border-radius:8px;padding:.65rem .85rem;font-size:.73rem;line-height:1.7">
+          <div style="font-weight:700;color:var(--g800);margin-bottom:.3rem;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em">Outreach Tiers</div>
+          <div style="display:flex;flex-direction:column;gap:.18rem">
+            <div><span style="font-weight:700;color:#0284c7">T1 — Digital first</span> · Propensity &gt;70% · Email + SMS · ~$0.50/member · Best ROI; fast response</div>
+            <div><span style="font-weight:700;color:#7c3aed">T2 — Light incentive</span> · Propensity 45–70% · Email + SMS + $15 gift card · ~$15.50/member · Moderate nudge needed</div>
+            <div><span style="font-weight:700;color:#b45309">T3 — High touch</span> · Propensity &lt;45% · Phone call + $25 gift card · ~$25/member · Hard-to-reach; low-literacy or no digital</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:.5rem;font-size:.68rem;color:var(--g400);font-style:italic">Ranking: greedy allocation by ROI ratio (highest return-per-dollar first). Partial campaigns run T1 alone or T1+T2 when budget is tight.</div>
     </div>
     <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:1.1rem">
       <div style="display:flex;align-items:center;gap:.4rem">
@@ -2839,8 +2861,16 @@ function renderOpp(){
             const cls=o.funding==='unfunded'?'unfunded':o.funding==='full'?'full':'partial';
             const icon=o.funding==='unfunded'?'○':o.funding==='full'?'●':'◑';
             const iconColor=o.funding==='unfunded'?'var(--g400)':o.funding==='full'?'var(--teal)':'var(--amber)';
-            const lbl=o.funding==='unfunded'?'Skip':'Full ✓';
+            const lbl=o.funding==='unfunded'?'Skip':o.funding==='full'?'Full ✓':'Partial ◑';
             const lblColor=o.funding==='unfunded'?'var(--g400)':o.funding==='full'?'var(--teal)':'var(--amber)';
+            // Tier coverage badge for this row
+            const tierTag=o.funding==='full'
+              ?`<span title="All 3 tiers: T1 Digital + T2 Light Incentive + T3 High Touch" style="font-size:.65rem;background:#e0f2fe;color:#0284c7;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">T1+T2+T3</span>`
+              :o.funding==='partial'
+                ?(o.funding_label==='Tier 1+2 only'
+                  ?`<span title="T1 Digital-first + T2 Light Incentive (high &amp; mid propensity members only)" style="font-size:.65rem;background:#ede9fe;color:#7c3aed;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">T1+T2</span>`
+                  :`<span title="T1 Digital-first only (high propensity members, email+SMS, no incentive)" style="font-size:.65rem;background:#fef3c7;color:#b45309;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">T1 only</span>`)
+                :'';
             const bonusCapped=_capB(o.funded_bonus||0,planRev);
             const hasReturn=bonusCapped>0;
             const isAnalyzing=!!_activeAnalyses[o.measure_key+'_'+o.plan_key];
@@ -2857,10 +2887,11 @@ function renderOpp(){
               <span style="color:${iconColor};font-size:.85rem;flex-shrink:0">${icon}</span>
               <span style="min-width:1.5ch;color:var(--g500);font-size:.72rem">${i+1}.</span>
               <span style="flex:1;color:var(--g700);font-size:.79rem">${o.measure_code} × ${o.plan_name.replace('Aurora ','')}</span>
+              ${tierTag}
               ${o.funding!=='unfunded'
                 ?`<span style="font-size:.72rem;color:var(--g500)">$${(o.funded_cost||0).toLocaleString()}</span>${returnLabel}`
                 :returnLabel}
-              <span style="font-size:.72rem;font-weight:600;color:${lblColor};min-width:60px;text-align:right">${lbl}</span>
+              <span style="font-size:.72rem;font-weight:600;color:${lblColor};min-width:55px;text-align:right">${lbl}</span>
             </div>`;
           }).join('')}
         </div>
