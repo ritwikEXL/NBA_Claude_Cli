@@ -885,7 +885,9 @@ def get_opportunities_financial():
                     result['ai_model'] = fa.get('claude_model_used', '')
                     result['ai_timestamp'] = fa.get('created_timestamp', '')
             except Exception as e:
-                logging.warning(f"[financial] Could not merge AI analysis: {e}")
+                import traceback
+                logging.warning(f"[financial] Could not merge AI analysis: {e}\n{traceback.format_exc()}")
+                result['_merge_error'] = str(e)
 
     results.sort(key=lambda x: x["roi_ratio"], reverse=True)
     return results
