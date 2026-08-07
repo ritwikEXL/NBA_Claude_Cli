@@ -805,13 +805,9 @@ def get_opportunities_financial():
 
         # Merge Claude-generated analysis if fresh (< 24h)
         fa = ai_analyses.get((mk, pk))
-        if mk == 'M001' and pk == 'P001':
-            logging.info(f"[DEBUG M001/P001] fa found={fa is not None}, ai_analyses_keys={list(ai_analyses.keys())[:5]}")
         if fa:
             try:
                 age_h = (datetime.now() - datetime.fromisoformat(fa['created_timestamp'])).total_seconds() / 3600
-                if mk == 'M001' and pk == 'P001':
-                    logging.info(f"[DEBUG M001/P001] age_h={age_h:.2f}, will_merge={age_h < 24}")
                 if age_h < 24:
                     result = results[-1]
                     result['tier1_count'] = fa.get('tier_1_count') or result['tier1_count']
@@ -889,9 +885,7 @@ def get_opportunities_financial():
                     result['ai_model'] = fa.get('claude_model_used', '')
                     result['ai_timestamp'] = fa.get('created_timestamp', '')
             except Exception as e:
-                import traceback
-                logging.warning(f"[financial] Could not merge AI analysis: {e}\n{traceback.format_exc()}")
-                result['_merge_error'] = str(e)
+                logging.warning(f"[financial] Could not merge AI analysis: {e}")
 
     results.sort(key=lambda x: x["roi_ratio"], reverse=True)
     return results
