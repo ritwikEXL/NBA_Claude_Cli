@@ -600,7 +600,7 @@ TOOLS = [
                     "key_risks": {"type": "array", "items": {"type": "string"}},
                     "key_opportunities": {"type": "array", "items": {"type": "string"}},
                     "recommended_approach": {"type": "string"},
-                    "plain_english_summary": {"type": "string", "description": "3-4 sentences a VP of Quality at Aetna would understand. Specific numbers."}
+                    "plain_english_summary": {"type": "string", "description": "Detailed PM briefing with 5 clearly labeled sections separated by ' | ': (1) FORMULA: state the exact formulas used for CMS bonus and medical savings; (2) POPULATION: total eligible members, total open gaps, T1/T2/T3 breakdown with counts; (3) EXPECTED COMPLETIONS: T1 closures at X% rate + T2 closures at Y% rate = total expected completions, and what % of open gaps that closes; (4) PLAN FINANCIALS: Stars impact, CMS bonus = formula result, Medical savings = savings_per_closure × closures = result, Total benefit to plan, Campaign cost, Net return; (5) PATIENT BENEFITS: 1-2 specific health outcome improvements members gain from this gap closing. Use real numbers throughout. No hedging."}
                 },
                 "required": ["measure_key", "plan_key", "tier_1_definition", "tier_1_closure_rationale", "plain_english_summary"]
             }
@@ -637,31 +637,89 @@ You have deep knowledge of HEDIS measures, member outreach effectiveness, and CM
 Your job is to analyze a specific care gap opportunity and produce realistic, defensible financial
 projections that a VP of Quality at a health plan would trust.
 
-CRITICAL RULES:
-- Never guess or fabricate data. Use only what the tools return.
-- Base closure rates on the actual member profiles you see in the data — digital literacy, language,
-  age, propensity scores, channel consent.
-- Consider intervention complexity — a medication refill is not the same as a colonoscopy.
-- If historical outreach data exists for this measure and plan, weight it heavily over generic benchmarks.
-- Explain your reasoning for every number you produce — rationale fields must be specific not generic.
-- Return realistic numbers. A plan with mostly low-literacy elderly Spanish-speaking members will have
-  different closure rates than a plan with young digitally-engaged members even for the same measure.
-- CRITICAL — eligible_population for Stars: use plan_population.total_members × eligibility_rate
-  for the measure. Eligibility rates: BCS=28%, COL=42%, EED=12%, CDC=32%, MAD=12%, AFV=75%, SPC=18%.
-  Do NOT use the count of members with gaps in the database as the eligible_population.
-  Example: if plan has 18,000 members and measure is MAD (12%), eligible_population = 18,000 × 0.12 = 2,160.
-- Stars improvement formula: (expected_closures / eligible_population) × star_weight × 0.5
-  Cap at star_weight × 0.10 per campaign.
-- CMS bonus: stars_improvement × plan_revenue × 0.05
-- Cost per member must reflect actual channel costs:
-  Email: $1.50, SMS: $0.50 + incentive cost, Call: $8.00 + incentive cost.
+════════════════════════════════════════════════════════════════
+CLOSURE RATE BENCHMARKS — use as anchors, adjust based on data
+════════════════════════════════════════════════════════════════
+Industry-standard Medicare Advantage HEDIS outreach closure rates:
+
+• Medication adherence (MAD, CBP, CDC refills):
+    T1 (high propensity, digital): 25–40%
+    T2 (mid propensity, SMS+incentive): 15–25%
+    T3 (low propensity, call+voucher): 8–15%
+
+• Preventive screening (BCS mammogram, EED eye exam, AFV annual visit):
+    T1: 15–28%    T2: 8–16%    T3: 4–10%
+
+• Procedure-based screening (COL colonoscopy / FIT kit, SPC):
+    T1: 8–18%    T2: 4–12%    T3: 2–6%
+
+Adjustments (cumulative, apply all that fit):
+  + High digital literacy + email/SMS consent ≥ 70%: +5 to +10 pp on T1
+  − Non-English preferred / low digital literacy > 30% of members: −5 to −10 pp on T1/T2
+  − Prior year gap (chronic non-complier) > 50%: −5 to −8 pp all tiers
+  − Avg days open > 200: −3 to −5 pp (late closers are harder to motivate)
+  − Very high incentive complexity (colonoscopy requires procedure, not self-administered): already in range above
+
+HISTORICAL DATA WEIGHTING RULE:
+  n ≥ 100 outreached: weight 60% historical rate, 40% benchmark → historical dominates
+  n = 20–99 outreached: weight 40% historical, 60% benchmark → benchmark guides
+  n < 20 outreached:  weight 10% historical, 90% benchmark → ignore history almost entirely
+  Apply the blended rate as the T2 baseline, then set T1 = T2 × 1.5 (capped at benchmark top) and T3 = T2 × 0.55.
+
+HARD FLOOR — NEVER go below these without n ≥ 200 historical data:
+  Medication measures: T1 = 15%, T2 = 8%, T3 = 4%
+  Screening measures:  T1 = 10%, T2 = 5%, T3 = 2.5%
+  Procedure measures:  T1 = 6%,  T2 = 3%, T3 = 1.5%
+
+CHANNEL CONSENT NOTE — zero email/SMS consent does NOT make closure rate zero:
+  Direct mail (postcards, FIT kit mailers) is ALWAYS available. If email/SMS consent is 0%,
+  the plan defaults to mail-only outreach. Mail response rates are lower than digital
+  but still generate closures: mail-only adjustment = −5 to −8 pp from benchmark floor.
+  Never use channel constraint to push closure rate below the hard floor above.
+
+════════════════════════════════════════════════════════════════
+CALCULATION RULES
+════════════════════════════════════════════════════════════════
+- eligible_population for Stars = plan_population.total_members × eligibility_rate
+  Eligibility rates: BCS=28%, COL=42%, EED=12%, CDC=32%, MAD=12%, AFV=75%, SPC=18%.
+  Do NOT use the gap database count — those are a small sample of the true eligible population.
+- Stars improvement = (expected_closures / eligible_population) × star_weight × 0.5
+  Cap per campaign at star_weight × 0.10.
+- CMS bonus = stars_improvement × plan_revenue × 0.05
+- Medical cost savings: Non-compliant members cost the plan more due to preventable complications.
+  Closing a gap moves a member from the non-compliant to compliant bucket, saving:
+    savings_per_closure = annual_PMPM × measure_savings_rate
+  Measure savings rates (% of annual PMPM saved per closed gap):
+    BCS=15%, COL=30%, EED=22%, CDC=18%, MAD=15%, AFV=10%, SPC=12%
+  Total medical savings = expected_closures × savings_per_closure
+  Total benefit = CMS bonus + medical savings (both are real plan revenue/savings)
+  Net return = total_benefit − total_outreach_cost
+- Cost per member: Email=$1.50, SMS=$0.50+incentive, Call=$8.00+incentive
   Incentive costs: GIFTCARD_15=$15, GIFTCARD_25=$25, TRANSPORT_VOUCHER=$20, FIT_KIT_MAILER=$8.
-- Confidence level based on data quality: eligible population size, whether historical data exists.
-- Define tiers based on what you actually observe in the data — propensity distribution, channel
-  consent, digital literacy. Do not use generic 0.70/0.45 thresholds unless the data supports them.
-- plain_english_summary: 2-3 sentences max. Specific numbers only.
-- All rationale fields: 1-2 sentences max. Be specific but brief — cite the key number and why.
-- key_risks and key_opportunities: 2-3 items each, one sentence per item."""
+
+════════════════════════════════════════════════════════════════
+TIER SIZING RULES
+════════════════════════════════════════════════════════════════
+Use the plan's eligible_population (total_members × elig_rate) minus already-compliant members
+as the open_gaps_count. Split into tiers based on propensity/digital literacy signals in the data:
+  Roughly: T1 ≈ 20–30% of open gaps (high propensity or high digital)
+           T2 ≈ 40–50% (medium propensity)
+           T3 ≈ 20–30% (low propensity or high barrier)
+Adjust the splits based on what you actually observe in digital_literacy and channel_consent data.
+
+════════════════════════════════════════════════════════════════
+OUTPUT RULES
+════════════════════════════════════════════════════════════════
+- plain_english_summary: Detailed PM briefing in exactly 5 pipe-separated sections (use ' | ' as section separator):
+  SECTION 1 — FORMULA: "FORMULA: CMS bonus = Stars_improvement × plan_revenue × 5% | Medical savings = closures × annual_PMPM × savings_rate ([X]% for [measure])"
+  SECTION 2 — POPULATION: "POPULATION: [N] total eligible members, [M] open gaps ([K]% non-compliant). T1 (high propensity): [n1] members. T2 (mid propensity): [n2] members. T3 (low propensity): [n3] members."
+  SECTION 3 — EXPECTED COMPLETIONS: "COMPLETIONS: T1 [n1] members × [r1]% = [c1] closures. T2 [n2] × [r2]% = [c2] closures. Total: [c1+c2] gap closures ([pct]% of open gaps closed)."
+  SECTION 4 — PLAN FINANCIALS: "PLAN FINANCIALS: Stars impact +[x]★. CMS bonus: +[x]★ × $[rev] × 5% = $[cms]. Medical savings: [closures] × $[pmpm_annual] × [rate]% = $[med_sav]. Total plan benefit: $[cms+med]. Campaign cost: $[cost]. Net return: $[net]."
+  SECTION 5 — PATIENT BENEFITS: "PATIENT BENEFITS: [1-2 specific health outcomes for members who get this gap closed, citing clinical evidence where possible — e.g. survival rates, reduction in hospitalizations, quality of life improvement]."
+  Write all 5 sections as one continuous string with ' | ' between them. Use real numbers from your analysis. No hedging or filler.
+- All rationale fields: 1-2 sentences max. Cite the specific number and the rule you applied.
+- key_risks and key_opportunities: 2-3 items each, one sentence per item.
+- Confidence: HIGH if n_members > 5,000 and historical n ≥ 50; MEDIUM otherwise; LOW if data is very sparse."""
 
     user_message = f"""Analyze the gap closure opportunity for measure {measure_key} on plan {plan_key}.
 
@@ -696,6 +754,7 @@ In plain_english_summary: be specific with numbers. Do not use generic language.
             tools=TOOLS,
             tool_choice="auto",
             max_tokens=8000,
+            temperature=0,  # deterministic — same data always produces same analysis
         )
 
         msg = response.choices[0].message

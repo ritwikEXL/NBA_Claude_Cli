@@ -17,17 +17,17 @@
   --green:#15803D;--green-l:#DCFCE7;
   --blue:#1D4ED8;--blue-l:#DBEAFE;
   --purple:#7C3AED;--purple-l:#EDE9FE;
-  --g900:#111827;--g800:#1F2937;--g600:#4B5563;--g400:#9CA3AF;--g200:#E5E7EB;--g100:#F3F4F6;--g50:#FEF5F1;
+  --g900:#111827;--g800:#1F2937;--g700:#374151;--g600:#4B5563;--g500:#6B7280;--g400:#9CA3AF;--g300:#D1D5DB;--g200:#E5E7EB;--g100:#F3F4F6;--g50:#F5F2F0;
   --white:#fff;
   --nav-h:56px;
-  --r:10px;--r-sm:5px;--r-lg:12px;
-  --shadow:0 1px 3px rgba(251,78,11,.07),0 1px 2px rgba(0,0,0,.05);
-  --shadow-md:0 4px 8px -2px rgba(251,78,11,.12),0 2px 4px rgba(0,0,0,.07);
-  --card-border:1px solid #FAD4C7;
+  --r:10px;--r-sm:5px;--r-lg:14px;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 4px 12px rgba(0,0,0,.1),0 2px 4px rgba(0,0,0,.06);
+  --card-border:1px solid #E5D4CC;
 }
 /* ── Reset & Base ──────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:14px;color:var(--g900);background:#FEF5F1;line-height:1.5}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:14px;color:var(--g900);background:#F5F2F0;line-height:1.5}
 button{font-family:inherit;cursor:pointer;border:none;outline:none}
 table{border-collapse:collapse;width:100%}
 th,td{text-align:left;padding:.45rem .7rem;white-space:nowrap}
@@ -44,12 +44,12 @@ tr:hover td{background:var(--g50)}
 }
 .nav-brand{display:flex;align-items:center;gap:.6rem;flex-shrink:0}
 .nav-mark{
-  width:30px;height:30px;border-radius:6px;
-  background:rgba(255,255,255,.2);border:2px solid rgba(255,255,255,.4);
-  display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;
+  width:32px;height:32px;border-radius:8px;
+  background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.25);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
 }
-.nav-brand strong{font-size:.95rem;letter-spacing:.01em}
-.nav-brand span{font-size:.71rem;opacity:.75;display:block;line-height:1}
+.nav-brand strong{font-size:1rem;letter-spacing:.02em;font-weight:700}
+.nav-brand span{font-size:.69rem;opacity:.7;display:block;line-height:1;letter-spacing:.04em;text-transform:uppercase}
 .nav-sep{width:1px;height:28px;background:rgba(255,255,255,.2);margin:0 .4rem}
 .nav-tabs{display:flex;gap:.25rem;flex:1}
 .nav-tab{
@@ -382,6 +382,10 @@ tr:hover td{background:var(--g50)}
 .sit-stat-box .sv{font-size:1.55rem;font-weight:800;line-height:1.1}
 .sit-stat-box .sk{font-size:.71rem;opacity:.75;margin-top:.15rem}
 .opp-top-card{background:#fff;border:1.5px solid #FAD4C7;border-radius:12px;box-shadow:var(--shadow-md);margin-bottom:1.1rem;overflow:hidden}
+details.opp-top-card>summary{list-style:none;padding:.7rem 1.3rem;cursor:pointer;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;background:var(--g50);border-bottom:1px solid var(--g100);user-select:none}
+details.opp-top-card>summary::-webkit-details-marker{display:none}
+details.opp-top-card>summary:hover{background:#EEEAE7}
+details.opp-top-card:not([open])>summary{border-bottom:none;border-radius:12px}
 .opp-top-grid{display:grid;grid-template-columns:1.05fr 1.45fr .9fr;min-height:200px}
 .opp-top-col{padding:1.15rem 1.3rem}
 .opp-top-col+.opp-top-col{border-left:1px solid var(--g100)}
@@ -501,7 +505,7 @@ tr:hover td{background:var(--g50)}
 <!-- ── Nav ─────────────────────────────────────────────────────────── -->
 <nav id="nav">
   <div class="nav-brand">
-    <div class="nav-mark">⚕</div>
+    <div class="nav-mark"><svg width="18" height="13" viewBox="0 0 18 13" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0.5 6.5h3L5 2.5l3 8 2.5-7L12 9l1.5-2.5H17.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div>
       <strong>CareIntel</strong>
       <span>Medicare Stars · Next Best Action</span>
@@ -517,7 +521,7 @@ tr:hover td{background:var(--g50)}
   </div>
   <div class="nav-right">
     <div class="history-wrap" id="history-wrap">
-      <button class="history-btn" data-action="toggle-history">📋 Sessions ▾</button>
+      <button class="history-btn" data-action="toggle-history">Sessions ▾</button>
     </div>
     <div class="status-pill" id="api-status-pill">
       <div class="status-dot" id="api-dot" style="background:#9CA3AF"></div>
@@ -591,7 +595,7 @@ const S={
   campOptions:[],campIdx:null,campaign:null,campaignId:null,
   step4Loading:false,
   outreachRows:[],decisionRows:[],traceRows:[],
-  lastTraceSeen:0,sendState:{},sendAllInProgress:false,
+  lastTraceSeen:0,sendState:{},sendAllInProgress:false,openCards:{},
   msgPreviews:{},previewsLoading:false,
   deliveryInProgress:false,deliveryProgress:{total:0,sent:0,failed:0,scheduled:0,results:[]},
   evalData:null,evalLoading:false,evalError:'',evalSelectedRun:'',evalMemberRows:[],
@@ -629,6 +633,153 @@ function renderApiStatus(){
   if(S.apiConnected===null){dot.style.background='#9CA3AF';txt.textContent='Connecting…';}
   else if(S.apiConnected){dot.style.background='#6EE7B7';txt.textContent='API Connected';}
   else{dot.style.background='#F87171';txt.textContent='API Offline';}
+}
+
+/* ── AI Analysis Trigger ───────────────────────────────────────────── */
+// Tracks in-progress analyses so render() can restore button state
+const _activeAnalyses={};
+
+// Toast notification — immune to Chrome's "prevent dialogs" suppression
+function _aiToast(msg,isError){
+  const t=document.createElement('div');
+  t.textContent=msg;
+  Object.assign(t.style,{
+    position:'fixed',bottom:'24px',right:'24px',zIndex:9999,
+    background:isError?'#DC2626':'#15803D',color:'#fff',
+    padding:'.75rem 1.25rem',borderRadius:'8px',fontSize:'.85rem',
+    fontFamily:'inherit',boxShadow:'0 4px 12px rgba(0,0,0,.25)',
+    maxWidth:'420px',lineHeight:'1.45',
+    transition:'opacity .4s',opacity:'1'
+  });
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},isError?8000:4000);
+}
+
+function _setCardError(key,msg){
+  if(!S.cardErrors)S.cardErrors={};
+  if(msg)S.cardErrors[key]=msg;else delete S.cardErrors[key];
+}
+
+async function runAiAnalysis(measureKey,planKey){
+  console.log('[runAiAnalysis] called:',measureKey,planKey,'API=',API);
+  const key=measureKey+'_'+planKey;
+  if(_activeAnalyses[key]){console.log('[runAiAnalysis] already in progress, skipping');return;}
+  _setCardError(key,null);
+  try{
+    _activeAnalyses[key]={dots:0};
+    try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
+    console.log('[runAiAnalysis] posting to',`${API}/financial/analyze/${measureKey}/${planKey}`);
+    const kickResp=await fetch(`${API}/financial/analyze/${measureKey}/${planKey}`,{method:'POST'});
+    console.log('[runAiAnalysis] kick status',kickResp.status);
+    if(!kickResp.ok)throw new Error('HTTP '+kickResp.status+' — is the FastAPI server running on port 8000?');
+    const kick=await kickResp.json();
+    console.log('[runAiAnalysis] kick response',kick);
+    if(kick.status==='cached'){
+      console.log('[runAiAnalysis] cached — reloading page to show analysis');
+      delete _activeAnalyses[key];
+      sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
+      sessionStorage.setItem('nba_analysisKey',key);
+      sessionStorage.setItem('nba_tab','opp');
+      if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
+      window.location.reload();
+      return;
+    }
+    const jobId=kick.job_id;
+    let _jobMiss=0;
+    const interval=setInterval(async()=>{
+      if(!_activeAnalyses[key]){clearInterval(interval);return;}
+      _activeAnalyses[key].dots=((_activeAnalyses[key].dots||0)%3)+1;
+      const liveBtn=document.querySelector(`[data-analysis-key="${key}"]`);
+      if(liveBtn)liveBtn.textContent='Analyzing'+'.'.repeat(_activeAnalyses[key].dots);
+      try{
+        const st=await apiGet('/financial/analyze-all/status');
+        const job=st[jobId];
+        console.log('[runAiAnalysis] poll jobId='+jobId,'status=',job&&job.status);
+        if(job&&job.status==='complete'){
+          clearInterval(interval);
+          delete _activeAnalyses[key];
+          try{
+            const fin=await apiGet('/opportunities/financial');
+            const card=fin.find(o=>o.measure_key===measureKey&&o.plan_key===planKey);
+            if(card&&card.ai_analysis){
+              sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
+              sessionStorage.setItem('nba_analysisKey',key);
+              sessionStorage.setItem('nba_tab','opp');
+              if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
+              window.location.reload();
+            }else{
+              const errMsg=job.analysis&&job.analysis.error?job.analysis.error:'Analysis ran but produced no output — check ANTHROPIC_API_KEY in .env';
+              _setCardError(key,errMsg);
+              try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
+              _aiToast('Analysis incomplete: '+errMsg,true);
+            }
+          }catch(fetchErr){
+            sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
+            sessionStorage.setItem('nba_analysisKey',key);
+            sessionStorage.setItem('nba_tab','opp');
+            if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
+            window.location.reload();
+          }
+        }else if(job&&job.status==='error'){
+          clearInterval(interval);
+          const msg='Analysis error: '+(job.error||'unknown');
+          delete _activeAnalyses[key];
+          _setCardError(key,msg);
+          try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
+          _aiToast(msg,true);
+        }else if(!job){
+          _jobMiss++;
+          if(_jobMiss>5){
+            clearInterval(interval);
+            const msg='Server lost track of the job — please try again.';
+            delete _activeAnalyses[key];
+            _setCardError(key,msg);
+            try{render();}catch(re){};
+            _aiToast(msg,true);
+          }
+        }
+      }catch(e){console.error('[AI Analysis] poll error:',e);}
+    },3000);
+    setTimeout(()=>{
+      if(_activeAnalyses[key]){
+        clearInterval(interval);
+        const msg='Analysis timed out after 3 minutes — server may be busy.';
+        delete _activeAnalyses[key];
+        _setCardError(key,msg);
+        try{render();}catch(re){};
+        _aiToast(msg,true);
+      }
+    },180000);
+  }catch(e){
+    console.error('[AI Analysis] start error:',e);
+    delete _activeAnalyses[key];
+    _setCardError(key,'Could not start: '+e.message);
+    try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
+    _aiToast('Could not start analysis: '+e.message,true);
+  }
+}
+window.runAiAnalysis=runAiAnalysis;
+
+async function runAllAiAnalyses(){
+  const btn=document.getElementById('run-all-analyses-btn');
+  if(btn){btn.disabled=true;btn.textContent='Running AI analysis…';}
+  try{
+    await fetch(`${API}/financial/analyze-all`,{method:'POST'});
+    // Poll for completion
+    let done=false;
+    for(let i=0;i<60&&!done;i++){
+      await new Promise(r=>setTimeout(r,3000));
+      const st=await apiGet('/financial/analyze-all/status');
+      const jobs=Object.values(st||{});
+      if(jobs.some(j=>j.status==='complete')){done=true;}
+    }
+    const fin=await apiGet('/opportunities/financial');
+    S.financialData=fin;
+    render();
+    if(btn){btn.disabled=false;btn.textContent='Run All AI Analyses';}
+  }catch(e){
+    if(btn){btn.disabled=false;btn.textContent='Run All AI Analyses';}
+  }
 }
 
 /* ── Data Loading ──────────────────────────────────────────────────── */
@@ -1104,131 +1255,6 @@ async function handleDatasourceFiles(fileList){
   },3000);
 }
 
-// Tracks in-progress analyses so render() can restore button state
-const _activeAnalyses={};
-
-// Toast notification — immune to Chrome's "prevent dialogs" suppression
-function _aiToast(msg,isError){
-  const t=document.createElement('div');
-  t.textContent=msg;
-  Object.assign(t.style,{
-    position:'fixed',bottom:'24px',right:'24px',zIndex:9999,
-    background:isError?'#DC2626':'#15803D',color:'#fff',
-    padding:'.75rem 1.25rem',borderRadius:'8px',fontSize:'.85rem',
-    fontFamily:'inherit',boxShadow:'0 4px 12px rgba(0,0,0,.25)',
-    maxWidth:'420px',lineHeight:'1.45',
-    transition:'opacity .4s',opacity:'1'
-  });
-  document.body.appendChild(t);
-  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},isError?8000:4000);
-}
-
-function _setCardError(key,msg){
-  if(!S.cardErrors)S.cardErrors={};
-  if(msg)S.cardErrors[key]=msg;else delete S.cardErrors[key];
-}
-
-async function runAiAnalysis(measureKey,planKey){
-  if(measureKey&&planKey){
-    console.log('[runAiAnalysis] called:',measureKey,planKey,'API=',API);
-    const key=measureKey+'_'+planKey;
-    if(_activeAnalyses[key]){console.log('[runAiAnalysis] already in progress, skipping');return;}
-    _setCardError(key,null);
-    try{
-      _activeAnalyses[key]={dots:0};
-      try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
-      console.log('[runAiAnalysis] posting to',`${API}/financial/analyze/${measureKey}/${planKey}`);
-      const kickResp=await fetch(`${API}/financial/analyze/${measureKey}/${planKey}`,{method:'POST'});
-      console.log('[runAiAnalysis] kick status',kickResp.status);
-      if(!kickResp.ok)throw new Error('HTTP '+kickResp.status+' — is the FastAPI server running on port 8000?');
-      const kick=await kickResp.json();
-      console.log('[runAiAnalysis] kick response',kick);
-      if(kick.status==='cached'){
-        console.log('[runAiAnalysis] cached — reloading page to show analysis');
-        delete _activeAnalyses[key];
-        sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
-        sessionStorage.setItem('nba_analysisKey',key);
-        sessionStorage.setItem('nba_tab','opp');
-        window.location.reload();
-        return;
-      }
-      const jobId=kick.job_id;
-      let _jobMiss=0;
-      const interval=setInterval(async()=>{
-        if(!_activeAnalyses[key]){clearInterval(interval);return;}
-        _activeAnalyses[key].dots=((_activeAnalyses[key].dots||0)%3)+1;
-        const liveBtn=document.querySelector(`[data-analysis-key="${key}"]`);
-        if(liveBtn)liveBtn.textContent='🤖 Analyzing'+'.'.repeat(_activeAnalyses[key].dots);
-        try{
-          const st=await apiGet('/financial/analyze-all/status');
-          const job=st[jobId];
-          console.log('[runAiAnalysis] poll jobId='+jobId,'status=',job&&job.status);
-          if(job&&job.status==='complete'){
-            clearInterval(interval);
-            delete _activeAnalyses[key];
-            try{
-              const fin=await apiGet('/opportunities/financial');
-              const card=fin.find(o=>o.measure_key===measureKey&&o.plan_key===planKey);
-              if(card&&card.ai_analysis){
-                sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
-                sessionStorage.setItem('nba_analysisKey',key);
-                sessionStorage.setItem('nba_tab','opp');
-                if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
-                window.location.reload();
-              }else{
-                const errMsg=job.analysis&&job.analysis.error?job.analysis.error:'Analysis ran but produced no output — check ANTHROPIC_API_KEY in .env';
-                _setCardError(key,errMsg);
-                try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
-                _aiToast('Analysis incomplete: '+errMsg,true);
-              }
-            }catch(fetchErr){
-              sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
-              sessionStorage.setItem('nba_analysisKey',key);
-              sessionStorage.setItem('nba_tab','opp');
-              window.location.reload();
-            }
-          }else if(job&&job.status==='error'){
-            clearInterval(interval);
-            const msg='Analysis error: '+(job.error||'unknown');
-            delete _activeAnalyses[key];
-            _setCardError(key,msg);
-            try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
-            _aiToast(msg,true);
-          }else if(!job){
-            _jobMiss++;
-            if(_jobMiss>5){
-              clearInterval(interval);
-              const msg='Server lost track of the job — please try again.';
-              delete _activeAnalyses[key];
-              _setCardError(key,msg);
-              try{render();}catch(re){};
-              _aiToast(msg,true);
-            }
-          }
-        }catch(e){console.error('[AI Analysis] poll error:',e);}
-      },3000);
-      setTimeout(()=>{
-        if(_activeAnalyses[key]){
-          clearInterval(interval);
-          const msg='Analysis timed out after 3 minutes — server may be busy.';
-          delete _activeAnalyses[key];
-          _setCardError(key,msg);
-          try{render();}catch(re){};
-          _aiToast(msg,true);
-        }
-      },180000);
-    }catch(e){
-      console.error('[AI Analysis] start error:',e);
-      delete _activeAnalyses[key];
-      _setCardError(key,'Could not start: '+e.message);
-      try{render();}catch(re){console.error('[AI Analysis] render error:',re);}
-      _aiToast('Could not start analysis: '+e.message,true);
-    }
-    return;
-  }
-  return runAiAnalysisAll();
-}
-window.runAiAnalysis=runAiAnalysis;
 async function runAiAnalysisAll(){
   const btn=document.getElementById('ai-analyze-btn');
   const results=document.getElementById('ai-analysis-results');
@@ -1571,7 +1597,7 @@ function renderNav(){
   if(S.tab==='data') renderDataSources();
   // History dropdown
   const hw=document.getElementById('history-wrap');
-  if(hw)hw.innerHTML=`<button class="history-btn" data-action="toggle-history">📋 Sessions ▾</button>${S.historyOpen?renderHistoryDropdown():''}`;
+  if(hw)hw.innerHTML=`<button class="history-btn" data-action="toggle-history">Sessions ▾</button>${S.historyOpen?renderHistoryDropdown():''}`;
 }
 
 /* ── Render: Evaluation View ────────────────────────────────────── */
@@ -2291,7 +2317,7 @@ function renderConvSection(){
           outcomeStrip=`<div style="display:flex;gap:.75rem;padding:.3rem .9rem .55rem;font-size:.72rem;color:var(--g600)">
             ${c.appointment_date?`<span>📅 <b>${c.appointment_date}</b></span>`:''}
             ${ms!==null?`<span>⏱ ${ms}d outreach→close</span>`:''}
-            <span style="color:#25D366;font-weight:600">💬 Closed via ${chKey}</span>
+            <span style="color:#25D366;font-weight:600">💬 Closed via WhatsApp</span>
           </div>`;
         }
 
@@ -2363,59 +2389,160 @@ function _planCappedBonus(planStarsMap){
 }
 
 function _greedyAlloc(opps,budget){
-  const sorted=[...opps].sort((a,b)=>b.roi_ratio-a.roi_ratio);
+  // PROFIT-FIRST: budget is a ceiling, not a spending target.
+  // We only spend on campaigns where AI confirms a positive net return.
+  // Loss campaigns are marked 'loss' and their budget is preserved.
+  // Unanalyzed campaigns (no AI) are allocated greedily — unknown ROI.
+  //
+  // Tier logic: T3 excluded — cms_bonus is T1+T2 scoped; T3 adds cost with no modeled return.
+  //   'full'    = T1+T2 funded, AI confirms profitable (or no AI yet)
+  //   'partial' = T1 only funded (either T1+T2 is a loss but T1 alone profitable, or T1+T2 doesn't fit budget)
+  //   'loss'    = AI confirms negative ROI at every tier — budget NOT spent
+  //   'unfunded' = budget ran out before this opportunity
+  const sorted=[...opps].sort((a,b)=>{
+    const aA=!!(a.ai_analysis), bA=!!(b.ai_analysis);
+    // Sort by total net return = CMS bonus + medical savings − cost (medical savings is real plan money)
+    const netA=(a.total_benefit||(a.cms_bonus||0)+(a.medical_savings||0))-((a.tier1_cost||0)+(a.tier2_cost||0));
+    const netB=(b.total_benefit||(b.cms_bonus||0)+(b.medical_savings||0))-((b.tier1_cost||0)+(b.tier2_cost||0));
+    if(aA&&bA) return netB-netA;
+    if(aA&&!bA) return -1;
+    if(!aA&&bA) return 1;
+    return (b.star_weight||0)-(a.star_weight||0);
+  });
   let rem=budget,totalCost=0;
-  // Track Stars AND plan economics per plan so we can apply the 0.30★ portfolio cap
-  const planMeta={}; // plan_key → {stars, members, annual_pmpm}
+  const planMeta={};
   for(const o of opps){
-    if(!planMeta[o.plan_key]) planMeta[o.plan_key]={stars:0,members:o.plan_total_members||500,annual_pmpm:(o.annual_pmpm||(o.plan_pmpm_monthly||920)*12)};
+    if(!planMeta[o.plan_key]) planMeta[o.plan_key]={members:o.plan_total_members||500,annual_pmpm:(o.annual_pmpm||(o.plan_pmpm_monthly||920)*12)};
   }
   const planStarsUsed={};
 
+  const _capStars=(key,fs)=>{
+    const already=planStarsUsed[key]||0;
+    const capped=Math.min(fs,Math.max(0,0.30-already));
+    planStarsUsed[key]=(already)+capped;
+    return capped;
+  };
+
   const funded=sorted.map(o=>{
-    if(rem<=0)return{...o,funding:'unfunded',funded_cost:0,funded_stars:0,funded_bonus:0,funded_closures:0};
-    const t12=o.tier1_cost+o.tier2_cost;
-    let fs,fc,fl,fco;
-    if(o.total_cost<=rem){
-      fs=o.stars_expected;
-      fc=o.total_cost;fco=o.total_expected_closures;fl='full';
-      rem-=fc;
-    }else if(t12<=rem){
-      const cl=o.tier1_closures+o.tier2_closures;
-      fs=Math.min(cl*o.stars_per_gap,o.star_weight*0.15);
-      fc=t12;fco=cl;fl='partial';
-      rem-=fc;
-    }else if(o.tier1_cost<=rem){
-      const cl=o.tier1_closures;
-      fs=Math.min(cl*o.stars_per_gap,o.star_weight*0.15);
-      fc=o.tier1_cost;fco=cl;fl='partial';
-      rem-=fc;
-    }else{
-      return{...o,funding:'unfunded',funded_cost:0,funded_stars:0,funded_bonus:0,funded_closures:0};
+    const pm=planMeta[o.plan_key];
+    const hasAI=!!(o.ai_analysis&&o.cms_bonus>0);
+    const t12=(o.tier1_cost||0)+(o.tier2_cost||0);
+    const t1cost=o.tier1_cost||0;
+    const t1cl=o.tier1_closures||0;
+    const t12cl=Math.max((o.tier1_closures||0)+(o.tier2_closures||0),1);
+
+    if(rem<=0) return{...o,funding:'unfunded',funded_cost:0,funded_stars:0,funded_bonus:0,funded_closures:0,funded_medical_savings:0};
+
+    // Total benefit = CMS bonus + medical savings (hoisted so all blocks can reference it)
+    const oBenefit=(o.total_benefit||0)||(o.cms_bonus+(o.medical_savings||0));
+
+    // ── Try T1+T2 (full AI-modeled scope) ──
+    if(t12>0&&t12<=rem){
+      const t12Profitable=!hasAI||(oBenefit>=t12); // only gate if AI has verified the number
+      if(t12Profitable){
+        const fs=Math.min(t12cl*(o.stars_per_gap||0),o.star_weight*0.15);
+        const fsCapped=_capStars(o.plan_key,fs);
+        const fb=hasAI?o.cms_bonus:Math.round(fsCapped*pm.members*pm.annual_pmpm*0.05);
+        const fms=hasAI?(o.medical_savings||0):0; // funded medical savings = full amount for T1+T2
+        rem-=t12;totalCost+=t12;
+        return{...o,funding:'full',funded_cost:t12,funded_stars:fsCapped,funded_bonus:fb,funded_closures:t12cl,funded_medical_savings:fms,funding_label:'Tier 1+2'};
+      }
+      // T1+T2 confirmed loss — cascade to T1 alone
+      const fundFrac1=t1cl/t12cl;
+      const t1Benefit=hasAI?oBenefit*fundFrac1:0;
+      if(t1cost>0&&t1cost<=rem&&t1Benefit>=t1cost){
+        const fs1=Math.min(t1cl*(o.stars_per_gap||0),o.star_weight*0.15);
+        const fsCapped=_capStars(o.plan_key,fs1);
+        const fb=Math.round(o.cms_bonus*fundFrac1);
+        const fms=hasAI?Math.round((o.medical_savings||0)*fundFrac1):0; // proportional for T1 only
+        rem-=t1cost;totalCost+=t1cost;
+        return{...o,funding:'partial',funded_cost:t1cost,funded_stars:fsCapped,funded_bonus:fb,funded_closures:t1cl,funded_medical_savings:fms,funding_label:'Tier 1 only'};
+      }
+      // All tiers are a confirmed loss — skip, preserve budget
+      if(hasAI) return{...o,funding:'loss',funded_cost:0,funded_stars:0,funded_bonus:0,funded_closures:0,funded_medical_savings:0};
+      // No AI — unknown ROI, fund T1+T2 anyway (will reassess once AI runs)
+      const fs=Math.min(t12cl*(o.stars_per_gap||0),o.star_weight*0.15);
+      const fsCapped=_capStars(o.plan_key,fs);
+      const fb=Math.round(fsCapped*pm.members*pm.annual_pmpm*0.05);
+      rem-=t12;totalCost+=t12;
+      return{...o,funding:'full',funded_cost:t12,funded_stars:fsCapped,funded_bonus:fb,funded_closures:t12cl,funded_medical_savings:0,funding_label:'Tier 1+2'};
     }
 
-    // Apply plan-level 0.30★ portfolio cap: only count Stars that fit under the cap
-    const already=planStarsUsed[o.plan_key]||0;
-    const capRoom=Math.max(0, 0.30-already);
-    const fsCapped=Math.min(fs, capRoom);
-    planStarsUsed[o.plan_key]=(already)+fsCapped;
+    // ── T1+T2 doesn't fit budget — try T1 alone ──
+    if(t1cost>0&&t1cost<=rem){
+      const fundFrac1=t1cl/t12cl;
+      const t1Benefit2=hasAI?oBenefit*fundFrac1:null;
+      const t1Profitable=!hasAI||(t1Benefit2!==null&&t1Benefit2>=t1cost);
+      if(t1Profitable){
+        const fs1=Math.min(t1cl*(o.stars_per_gap||0),o.star_weight*0.15);
+        const fsCapped=_capStars(o.plan_key,fs1);
+        const fb=hasAI?Math.round(o.cms_bonus*fundFrac1):Math.round(fsCapped*pm.members*pm.annual_pmpm*0.05);
+        const fms=hasAI?Math.round((o.medical_savings||0)*fundFrac1):0;
+        rem-=t1cost;totalCost+=t1cost;
+        return{...o,funding:'partial',funded_cost:t1cost,funded_stars:fsCapped,funded_bonus:fb,funded_closures:t1cl,funded_medical_savings:fms,funding_label:'Tier 1 only'};
+      }
+      if(hasAI) return{...o,funding:'loss',funded_cost:0,funded_stars:0,funded_bonus:0,funded_closures:0,funded_medical_savings:0};
+    }
 
-    // Funded bonus: use AI-provided cms_bonus (scaled by closure fraction) when available; fall back to Stars estimate
-    const pm=planMeta[o.plan_key];
-    const fundFrac=o.total_expected_closures>0?fco/o.total_expected_closures:1;
-    const fb=o.ai_analysis&&o.cms_bonus>0
-      ?Math.round(o.cms_bonus*Math.min(1,fundFrac))
-      :Math.round(fsCapped*pm.members*pm.annual_pmpm*0.05);
-
-    totalCost+=fc;
-    const fundingLabel=fl==='full'?'full':fc===t12?'Tier 1+2 only':'Tier 1 only';
-    return{...o,funding:fl,funded_cost:fc,funded_stars:fsCapped,funded_bonus:fb,funded_closures:fco,funding_label:fundingLabel};
+    // Budget exhausted (can't afford even T1)
+    return{...o,funding:'unfunded',funded_cost:0,funded_stars:0,funded_bonus:0,funded_closures:0,funded_medical_savings:0};
   });
 
-  // Total bonus = sum of per-opportunity funded bonuses (consistent with card numbers)
-  const totalBonus=funded.filter(f=>f.funding!=='unfunded').reduce((s,o)=>s+(o.funded_bonus||0),0);
+  const profitable=funded.filter(f=>f.funding==='full'||f.funding==='partial');
+  const totalBonus=profitable.reduce((s,o)=>s+(o.funded_bonus||0),0);
+  const totalMedSavings=profitable.reduce((s,o)=>s+(o.funded_medical_savings||0),0);
+  const totalBenefit=totalBonus+totalMedSavings;
   const totalStars=Object.values(planStarsUsed).reduce((s,v)=>s+v,0);
-  return{funded,totalStars,totalBonus,totalCost,netReturn:totalBonus-totalCost};
+  return{funded,totalStars,totalBonus,totalMedSavings,totalBenefit,totalCost,netReturn:totalBenefit-totalCost};
+}
+
+async function runPortfolioAnalysisBatch(btnId){
+  const btn=document.getElementById(btnId);
+  const fin=S.oppFinancial||[];
+  const unanalyzed=fin.filter(o=>!o.ai_analysis);
+  if(!unanalyzed.length){alert('All opportunities already have AI analysis. Ranking is up to date.');return;}
+  if(btn){btn.disabled=true;btn.textContent=`Queuing ${unanalyzed.length} analyses…`;}
+  const jobs={};
+  for(const o of unanalyzed){
+    try{
+      const resp=await fetch(`${API}/financial/analyze/${o.measure_key}/${o.plan_key}`,{method:'POST'});
+      if(resp.ok){const j=await resp.json();if(j.job_id)jobs[j.job_id]={measure_key:o.measure_key,plan_key:o.plan_key};}
+    }catch(e){console.error('[batchAnalysis] kick failed',o.measure_key,o.plan_key,e);}
+  }
+  const total=Object.keys(jobs).length;
+  if(!total){if(btn){btn.disabled=false;btn.textContent='Analyze All & Rank';}return;}
+  if(btn)btn.textContent=`0/${total} analyses complete…`;
+  let done=false,attempts=0;
+  while(!done&&attempts<80){
+    await new Promise(r=>setTimeout(r,3500));attempts++;
+    try{
+      const st=await apiGet('/financial/analyze-all/status');
+      const pending=Object.keys(jobs).filter(jid=>!st[jid]||st[jid].status!=='complete');
+      const nDone=total-pending.length;
+      if(btn)btn.textContent=`${nDone}/${total} analyses complete…`;
+      if(!pending.length)done=true;
+    }catch(e){}
+  }
+  sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
+  if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
+  sessionStorage.setItem('nba_tab','opp');
+  window.location.reload();
+}
+
+function navigateToOpp(measureKey, planKey){
+  const fin=S.oppFinancial||[];
+  const opp=fin.find(o=>o.measure_key===measureKey&&o.plan_key===planKey);
+  if(opp){S.filterPlan=opp.plan_name;}
+  const cardKey=measureKey+'_'+planKey;
+  if(!S.openCards)S.openCards={};
+  S.openCards[cardKey]=true;
+  S._highlightCardKey=cardKey;
+  S.tab='opp';          // correct tab name (not 'opps')
+  render();             // routes to renderOpp() when S.tab==='opp'
+  setTimeout(()=>{
+    const el=document.getElementById('card-'+measureKey+'-'+planKey);
+    if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
+  },150);
 }
 
 function launchCampaign(measureKey, planKey){
@@ -2499,6 +2626,8 @@ function renderOpp(){
   const daysLeft=Math.max(0,Math.round((yearEnd-now)/86400000));
 
   // Section 2: top 3 for this plan
+  // Stable sort: star weight (CMS impact) DESC, then open population DESC
+  // Net return is a display field only — never used as sort key (it changes after AI analysis)
   const allOpps=[...planFin].sort((a,b)=>b.star_weight-a.star_weight||b.open_population-a.open_population);
 
   // Section 4: budget planner
@@ -2508,14 +2637,17 @@ function renderOpp(){
   const alloc=_greedyAlloc(fin,budget);
   const funded=alloc.funded;
   const bpPlanStars={};
-  for(const o of funded){if(o.funding==='unfunded')continue;bpPlanStars[o.plan_key]=(bpPlanStars[o.plan_key]||0)+(o.funded_stars||0);}
+  for(const o of funded){if(o.funding==='unfunded'||o.funding==='loss')continue;bpPlanStars[o.plan_key]=(bpPlanStars[o.plan_key]||0)+(o.funded_stars||0);}
   const bpPortStars=Object.values(bpPlanStars).reduce((s,v)=>s+Math.min(v,0.25),0);
-  const bpTotalClosures=funded.filter(f=>f.funding!=='unfunded').reduce((s,o)=>s+Math.max(0,o.funded_closures||0),0);
+  const bpTotalClosures=funded.filter(f=>f.funding==='full'||f.funding==='partial').reduce((s,o)=>s+Math.max(0,o.funded_closures||0),0);
   const bpFundedCount=funded.filter(f=>f.funding==='full').length;
   const bpPartialCount=funded.filter(f=>f.funding==='partial').length;
+  const bpLossCount=funded.filter(f=>f.funding==='loss').length;
   const bpTotalCost=alloc.totalCost;
   const bpTotalBonus=alloc.totalBonus;
-  const bpNetReturn=bpTotalBonus-bpTotalCost;
+  const bpTotalMedSavings=alloc.totalMedSavings||0; // proportional medical savings (T1-only campaigns get T1 fraction)
+  const bpTotalBenefit=alloc.totalBenefit||0;
+  const bpNetReturn=alloc.netReturn||0;
 
   el.innerHTML=`
 
@@ -2556,7 +2688,7 @@ function renderOpp(){
         <div class="sit-stat-box"><div class="sv" style="color:#f87171">${belowBench} / ${planFin.length}</div><div class="sk">Below National Avg</div><div style="font-size:.67rem;opacity:.55;margin-top:.25rem">measures below<br>benchmark</div></div>
       </div>
     </div>
-    <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid rgba(255,255,255,.12);font-size:.72rem;opacity:.5">WHERE AM I LOSING MONEY? — ${sel.name} · ${sel.members.toLocaleString()} members · $${sel.pmpm}/mo PMPM · Synthetic demo data</div>
+    <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid rgba(255,255,255,.12);font-size:.72rem;opacity:.5">Revenue at Risk — ${sel.name} · ${sel.members.toLocaleString()} members · $${sel.pmpm}/mo PMPM · Synthetic demo data</div>
   </div>
 
   <!-- SECTION 2: TOP OPPORTUNITIES -->
@@ -2591,7 +2723,9 @@ function renderOpp(){
     const t12stars=o.stars_improvement||0;
     // Use server-computed CMS bonus directly (based on realistic eligible_pool)
     const t12bonus=o.cms_bonus||0;
-    const t12net=t12bonus-t12cost;
+    const t12medSavings=o.medical_savings||0;
+    const t12totalBenefit=(o.total_benefit||0)||(t12bonus+t12medSavings);
+    const t12net=t12totalBenefit-t12cost;
     const t12roi=t12cost>0?Math.round(t12net/Math.max(t12cost,1)):0;
     // Max CMS bonus if ALL gaps on this measure closed (capped at 2% plan revenue, adjusted for upside)
     const maxCmsBonus=Math.round(_capB(o.cms_bonus_all*upside,planRev));
@@ -2603,18 +2737,26 @@ function renderOpp(){
     const swLabel=o.star_weight>=3?'Highest Weight':o.star_weight>=2?'High Weight':o.star_weight>=1.5?'Medium Weight':'Standard Weight';
     const swColor=o.star_weight>=3?'var(--red)':o.star_weight>=2?'var(--amber)':o.star_weight>=1.5?'var(--blue)':'var(--g400)';
     const _isHighlight=S._highlightCardKey===(o.measure_key+'_'+o.plan_key);
-    return`<div class="opp-top-card" id="card-${o.measure_key}-${o.plan_key}"${_isHighlight?' style="outline:3px solid var(--teal);outline-offset:2px;border-radius:10px;"':''}>
-      <div style="padding:.7rem 1.3rem;background:var(--g50);border-bottom:1px solid var(--g100);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
-        <div style="display:flex;align-items:center;gap:.65rem">
-          <span style="font-size:.72rem;font-weight:700;background:var(--teal);color:#fff;border-radius:4px;padding:.15rem .5rem">#${idx+1}</span>
-          <span style="font-weight:700;font-size:.92rem;color:var(--g900)">${o.measure_name}</span>
-          <span class="badge badge-gray" style="font-size:.68rem">${o.measure_code}</span>
-          <span style="font-size:.72rem;font-weight:600;color:${swColor}">${swLabel} (${o.star_weight}★)</span>
-          ${o.ai_analysis?`<span style="background:#EDE9FE;color:#7C3AED;padding:.1rem .4rem;border-radius:4px;font-size:.65rem;font-weight:600">🤖 AI Analysis · ${new Date(o.ai_timestamp).toLocaleDateString()}</span>`:''}
+    const _cardKey=o.measure_key+'_'+o.plan_key;
+    const _isOpen=(_cardKey in (S.openCards||{}))?S.openCards[_cardKey]:(idx===0);
+    return`<details class="opp-top-card" id="card-${o.measure_key}-${o.plan_key}"${_isOpen?' open':''}${_isHighlight?' style="outline:3px solid var(--teal);outline-offset:2px;"':''} ontoggle="if(!S.openCards)S.openCards={};S.openCards['${_cardKey}']=this.open">
+      <summary>
+        <div style="display:flex;align-items:center;gap:.65rem;flex:1;min-width:0">
+          <span style="font-size:.72rem;font-weight:700;background:var(--teal);color:#fff;border-radius:4px;padding:.15rem .5rem;flex-shrink:0">#${idx+1}</span>
+          <span style="font-weight:700;font-size:.92rem;color:var(--g900);white-space:nowrap">${o.measure_name}</span>
+          <span class="badge badge-gray" style="font-size:.68rem;flex-shrink:0">${o.measure_code}</span>
+          <span style="font-size:.72rem;font-weight:600;color:${swColor};white-space:nowrap;flex-shrink:0">${swLabel} (${o.star_weight}★)</span>
+          ${o.ai_analysis?`<span style="background:#EDE9FE;color:#7C3AED;padding:.1rem .5rem;border-radius:4px;font-size:.65rem;font-weight:700;letter-spacing:.03em;flex-shrink:0;white-space:nowrap">AI ✓</span>`:''}
         </div>
-        <div style="font-size:.78rem;color:var(--g400)">Net return <strong style="color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12net)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this measure only, realistic estimate, T1+T2 tiers)</span></div>
-      </div>
-      ${o.plain_english_summary?`<div style="padding:.75rem 1.3rem;background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-bottom:1px solid #DDD6FE;font-size:.82rem;color:#4C1D95;line-height:1.55"><strong style="color:#7C3AED">AI Analysis:</strong> ${o.plain_english_summary}</div>`:''}
+        <div style="display:flex;align-items:center;gap:.75rem;flex-shrink:0">
+          <span style="font-size:.77rem;color:var(--g500)">${(o.open_population||0).toLocaleString()} gaps</span>
+          ${o.ai_analysis
+            ?`<strong style="font-size:.88rem;color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12net)} <span style="font-size:.67rem;font-weight:400;color:var(--g500)">net</span></strong>`
+            :`<span style="font-size:.75rem;color:var(--g400)">—</span>`}
+          <button onclick="event.stopPropagation();launchCampaign('${o.measure_key}','${sel.key}')" style="padding:.28rem .8rem;background:var(--teal);color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap">Launch →</button>
+          <span style="color:var(--g400);font-size:.75rem;flex-shrink:0">▾</span>
+        </div>
+      </summary>
       <div class="opp-top-grid">
         <div class="opp-top-col">
           <div style="font-size:.72rem;font-weight:700;color:var(--g500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Situation</div>
@@ -2683,19 +2825,36 @@ function renderOpp(){
               <div><span style="color:var(--g500)">Expected completions</span><br><strong style="color:var(--teal)">~${t12exp}</strong></div>
               <div><span style="color:var(--g500)">Total cost</span><br><strong>$${t12cost.toLocaleString()}</strong> <span style="font-size:.67rem;color:var(--g500)">(this measure × plan)</span></div>
               <div><span style="color:var(--g500)">Stars improvement</span><br><strong style="color:var(--teal)">+${t12stars.toFixed(3)}★</strong> <span style="font-size:.67rem;color:var(--g500)">est.</span></div>
-              <div><span style="color:var(--g500)">CMS bonus gained</span><br><strong style="color:#16a34a">${_fmtN(t12bonus)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this plan, this measure, projected)</span></div>
-              <div><span style="color:var(--g500)">Net return</span><br><strong style="color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12net)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this measure only)</span></div>
+              <div><span style="color:var(--g500)">CMS bonus gained</span><br><strong style="color:#16a34a">${_fmtN(t12bonus)}</strong> <span style="font-size:.67rem;color:var(--g500)">(Stars quality bonus)</span></div>
+              ${t12medSavings>0?`<div><span style="color:var(--g500)">+ Medical cost savings</span><br><strong style="color:#0891b2">${_fmtN(t12medSavings)}</strong> <span style="font-size:.67rem;color:var(--g500)">(non-compliance → compliance)</span></div>`:''}
+              <div><span style="color:var(--g500)">${t12medSavings>0?'= Total benefit':'Net return'}</span><br><strong style="color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12totalBenefit)}</strong> <span style="font-size:.67rem;color:var(--g500)">${t12medSavings>0?'(CMS bonus + medical savings)':'(this measure only)'}</span></div>
+              <div><span style="color:var(--g500)">Net return (after cost)</span><br><strong style="color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12net)}</strong> <span style="font-size:.67rem;color:var(--g500)">(this measure only)</span></div>
             </div>
             ${o.ai_analysis?`
 <div style="background:#fff;border:1px solid #A7D9C8;border-radius:6px;padding:.65rem .8rem;margin-top:.3rem">
   <div style="font-size:.8rem;font-weight:700;color:#15803D;margin-bottom:.5rem">
-    💰 Every $1 invested returns $${t12cost>0?Math.round(t12net/Math.max(t12cost,1)).toLocaleString():'—'} in net CMS value
+    Every $1 invested returns $${t12cost>0?Math.round(t12net/Math.max(t12cost,1)).toLocaleString():'—'} in net value <span style="font-weight:400;color:var(--g500)">(CMS bonus${t12medSavings>0?' + medical savings':''})</span>
   </div>
   <div style="font-size:.74rem;color:var(--g600);line-height:1.7">
-    <div>📋 <strong>Campaign Cost:</strong> $${t12cost.toLocaleString()} <span style="color:var(--g400)">(contacting ${t12m} highest-priority members)</span></div>
-    <div>⭐ <strong>Expected Stars Impact:</strong> +${t12stars.toFixed(4)}★ <span style="color:var(--g400)">(across ${(o.eligible_pool||o.eligible_members||0).toLocaleString()} estimated eligible members)</span></div>
-    <div>🏛 <strong>CMS Bonus Value:</strong> ${_fmtN(t12bonus)} <span style="color:var(--g400)">(if Stars improvement sustained through measurement year)</span></div>
-    <div>📈 <strong>Net Campaign Return:</strong> <strong style="color:${t12net>=0?'#15803D':'var(--red)'}">${_fmtN(t12net)}</strong></div>
+    <div><strong>Campaign Cost:</strong> $${t12cost.toLocaleString()} <span style="color:var(--g400)">(contacting ${t12m} highest-priority members)</span></div>
+    <div><strong>Expected Stars Impact:</strong> +${t12stars.toFixed(4)}★ <span style="color:var(--g400)">(across ${(o.eligible_pool||o.eligible_members||0).toLocaleString()} estimated eligible members)</span></div>
+    <div><strong>CMS Bonus Value:</strong> ${_fmtN(t12bonus)} <span style="color:var(--g400)">(Stars quality bonus, sustained through measurement year)</span></div>
+    ${t12medSavings>0?`<div><strong>Medical Cost Savings (Plan):</strong> <span style="color:#0891b2">${_fmtN(t12medSavings)}</span> <span style="color:var(--g400)">(${Math.round((o.medical_savings_rate||0)*100)}% of $${Math.round((o.annual_pmpm||0)/12).toLocaleString()}/mo PMPM × 12 × ${t12exp} closures — non-compliant → compliant bucket)</span></div>`:''}
+    ${t12medSavings>0?`<div><strong>Total Benefit to Plan:</strong> <span style="color:#16a34a">${_fmtN(t12totalBenefit)}</span> <span style="color:var(--g400)">(CMS bonus ${_fmtN(t12bonus)} + medical savings ${_fmtN(t12medSavings)})</span></div>`:''}
+    <div><strong>Net Campaign Return:</strong> <strong style="color:${t12net>=0?'#15803D':'var(--red)'}">${_fmtN(t12net)}</strong> <span style="color:var(--g400)">(total benefit − outreach cost)</span></div>
+  </div>
+  <div style="margin-top:.6rem;padding:.55rem .7rem;background:#F0FDF4;border:1px solid #86efac;border-radius:6px">
+    <div style="font-size:.74rem;font-weight:700;color:#15803D;margin-bottom:.35rem">💊 Patient Benefits — What closing this gap means for members</div>
+    <div style="font-size:.72rem;color:#166534;line-height:1.65">
+      ${(o.measure_code==='BCS')?`<div>• <strong>Earlier cancer detection</strong> — mammograms catch breast cancer at Stage I/II when 5-year survival exceeds 90%, vs. Stage III/IV where it drops below 30%.</div><div>• <strong>Lower treatment burden</strong> — early-stage treatment is less invasive and less costly for the member (reduced co-pays, fewer sick days).</div><div>• <strong>Peace of mind</strong> — members in screening programs report higher satisfaction and trust in their plan.</div>`:''}
+      ${(o.measure_code==='COL')?`<div>• <strong>Colorectal cancer prevention</strong> — colonoscopy removes pre-cancerous polyps before they become cancer; FIT kit detects hidden blood early.</div><div>• <strong>90%+ survival rate</strong> when colorectal cancer is found at Stage I; drops to ~14% at Stage IV.</div><div>• <strong>Reduced emergency care</strong> — unscreened members are more likely to present with late-stage cancer requiring costly emergency intervention.</div>`:''}
+      ${(o.measure_code==='EED')?`<div>• <strong>Prevents diabetic blindness</strong> — annual eye exams detect diabetic retinopathy early, when laser treatment can preserve vision. ~30% of diabetic members develop retinopathy.</div><div>• <strong>Systemic health signals</strong> — the eye exam also surfaces hypertension, kidney disease risk, and neuropathy indicators.</div><div>• <strong>Independence preserved</strong> — vision loss in seniors is a leading driver of falls, depression, and nursing home placement.</div>`:''}
+      ${(o.measure_code==='CDC')?`<div>• <strong>Blood sugar control</strong> — HbA1c management reduces risk of kidney failure, amputation, and cardiovascular events by 25–40%.</div><div>• <strong>Fewer hospitalizations</strong> — well-controlled diabetics have 30–50% fewer diabetes-related ER visits and inpatient stays.</div><div>• <strong>Quality of life</strong> — members with controlled diabetes report significantly lower rates of fatigue, pain, and functional limitation.</div>`:''}
+      ${(o.measure_code==='MAD')?`<div>• <strong>Medication adherence prevents crises</strong> — members who stay adherent to diabetes medications have 40% lower rates of acute complications.</div><div>• <strong>Avoids medication switching</strong> — non-adherence leads to dose escalation or drug changes, increasing side-effect burden and cost-sharing for members.</div><div>• <strong>Better self-management</strong> — outreach for adherence gaps often connects members to pharmacist counseling and care management programs.</div>`:''}
+      ${(o.measure_code==='AFV')?`<div>• <strong>Annual wellness visit</strong> — catches chronic conditions early, updates preventive screenings, and aligns medications with current guidelines.</div><div>• <strong>Care coordination</strong> — the visit triggers referrals for specialist care, mental health screening, and social needs assessment.</div><div>• <strong>Fall and cognitive risk screening</strong> — AWV includes STEADI fall-risk assessment and cognitive impairment screening for seniors.</div>`:''}
+      ${(o.measure_code==='SPC')?`<div>• <strong>Post-discharge follow-up</strong> — members who see their PCP within 7 days of a psychiatric hospitalization have 30% lower 30-day readmission rates.</div><div>• <strong>Medication continuity</strong> — follow-up visits ensure psychiatric medications are continued and adjusted, preventing relapse.</div><div>• <strong>Mental health parity</strong> — closing SPC gaps signals the plan's commitment to equitable mental health access.</div>`:''}
+      ${(!['BCS','COL','EED','CDC','MAD','AFV','SPC'].includes(o.measure_code))?`<div>• <strong>Preventive care compliance</strong> — closing this gap connects members to evidence-based care that reduces downstream complications.</div><div>• <strong>Better health outcomes</strong> — compliant members have lower rates of preventable hospitalizations and emergency visits.</div><div>• <strong>Member satisfaction</strong> — proactive outreach and gap closure improves member trust and plan retention.</div>`:''}
+    </div>
   </div>
   <div style="margin-top:.6rem">
     <div style="font-size:.67rem;color:var(--g400);margin-bottom:.25rem">Cost vs Bonus (to scale)</div>
@@ -2718,12 +2877,14 @@ function renderOpp(){
   </div>
 </div>
 <div style="font-size:.67rem;color:var(--g400);line-height:1.45;margin-top:.4rem;padding:.4rem .5rem;background:var(--g50);border-radius:4px">
-  AI analysis based on actual member population data. CMS bonus assumes Stars improvement sustained through measurement year end.
+  CMS bonus calculations assume Stars improvement is maintained through measurement year end. Actual bonus depends on performance across all measures. AI analysis based on actual member population data.
 </div>`:`
-<div style="border:1px dashed var(--g200);border-radius:6px;padding:.9rem 1rem;margin-top:.5rem;text-align:center;background:var(--g50)">
-  <div style="font-size:.8rem;color:var(--g500);margin-bottom:.6rem">Financial projections require AI analysis</div>
-  <div style="font-size:.72rem;color:var(--g400);margin-bottom:.75rem">Run the AI analysis to get Claude-generated closure rates, outreach costs, and ROI based on your actual member population data.</div>
-  ${_activeAnalyses[o.measure_key+'_'+o.plan_key]?`<button disabled data-analysis-key="${o.measure_key}_${o.plan_key}" style="background:var(--teal);color:#fff;border:none;padding:.45rem 1.1rem;border-radius:6px;font-size:.78rem;font-weight:600;opacity:.7;cursor:not-allowed">🤖 Analyzing...</button>`:`<button onclick="runAiAnalysis('${o.measure_key}','${o.plan_key}')" style="background:var(--teal);color:#fff;border:none;padding:.45rem 1.1rem;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer">🤖 Run AI Analysis</button>`}
+<div style="border:1px dashed var(--g200);border-radius:8px;padding:.85rem 1rem;margin-top:.5rem;display:flex;align-items:center;gap:.75rem;background:var(--g50)">
+  <div style="flex:1">
+    <div style="font-size:.78rem;font-weight:600;color:var(--g600);margin-bottom:.2rem">Financial projections require AI analysis</div>
+    <div style="font-size:.71rem;color:var(--g400);line-height:1.5">Expand <em>View Full AI Reasoning</em> below and click <strong>Run AI Analysis</strong> to generate Claude-powered closure rates, costs, and ROI.</div>
+  </div>
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style="flex-shrink:0;opacity:.25"><circle cx="14" cy="14" r="13" stroke="#888" stroke-width="1.5"/><path d="M14 8v6l4 2" stroke="#888" stroke-width="1.5" stroke-linecap="round"/></svg>
   ${(S.cardErrors&&S.cardErrors[o.measure_key+'_'+o.plan_key])?`<div style="margin-top:.6rem;padding:.45rem .7rem;background:#FEF2F2;border:1px solid #FECACA;border-radius:5px;font-size:.72rem;color:#DC2626;text-align:left">⚠ ${S.cardErrors[o.measure_key+'_'+o.plan_key]}</div>`:''}
 </div>`}
           </div>
@@ -2746,29 +2907,95 @@ function renderOpp(){
           <div style="flex:1"></div>
         </div>
       </div>
-      ${(o.stars_improvement_rationale||o.key_risks||o.key_opportunities||o.recommended_approach)?`
-      <details style="margin:.25rem 1.3rem .75rem;border:1px solid var(--g100);border-radius:6px;overflow:hidden">
-        <summary style="padding:.55rem .85rem;font-size:.76rem;font-weight:600;color:var(--g600);cursor:pointer;background:var(--g50);list-style:none;display:flex;align-items:center;gap:.4rem">
-          <span>🤖</span> View Full AI Reasoning
+      ${(o.ai_analysis||o.stars_improvement_rationale||o.key_risks||o.key_opportunities||o.recommended_approach||o.plain_english_summary)?`
+      <details style="margin:.25rem 1.3rem .5rem;border:1px solid var(--g100);border-radius:8px;overflow:hidden">
+        <summary style="padding:.6rem 1rem;font-size:.78rem;font-weight:600;color:var(--g600);cursor:pointer;background:var(--g50);list-style:none;display:flex;align-items:center;justify-content:space-between;gap:.4rem;user-select:none">
+          <span style="display:flex;align-items:center;gap:.5rem">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0"><circle cx="7" cy="7" r="6.5" stroke="#7C3AED" stroke-width="1"/><path d="M7 4v4M7 9.5v.5" stroke="#7C3AED" stroke-width="1.3" stroke-linecap="round"/></svg>
+            View Full AI Reasoning
+          </span>
+          <span style="font-size:.67rem;font-weight:400;color:var(--g400)">click to expand ▾</span>
         </summary>
-        <div style="padding:.75rem 1rem;font-size:.75rem;color:var(--g700);line-height:1.6;display:flex;flex-direction:column;gap:.65rem">
-          ${o.stars_improvement_rationale?`<div><strong style="color:var(--g900)">Stars Improvement Rationale:</strong><br>${o.stars_improvement_rationale}</div>`:''}
-          ${o.key_risks?(()=>{let r=o.key_risks;try{r=JSON.parse(r);}catch(e){}return Array.isArray(r)?`<div><strong style="color:var(--g900)">Key Risks:</strong><ul style="margin:.3rem 0 0 1.2rem;padding:0">${r.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:(r?`<div><strong style="color:var(--g900)">Key Risks:</strong><br>${r}</div>`:'')})():''}
-          ${o.key_opportunities?(()=>{let op=o.key_opportunities;try{op=JSON.parse(op);}catch(e){}return Array.isArray(op)?`<div><strong style="color:var(--g900)">Key Opportunities:</strong><ul style="margin:.3rem 0 0 1.2rem;padding:0">${op.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:(op?`<div><strong style="color:var(--g900)">Key Opportunities:</strong><br>${op}</div>`:'')})():''}
-          ${o.recommended_approach?`<div><strong style="color:var(--g900)">Recommended Approach:</strong><br>${o.recommended_approach}</div>`:''}
+        <div style="padding:.85rem 1.1rem;display:flex;flex-direction:column;gap:.85rem;background:#fff">
+
+          ${o.plain_english_summary?(()=>{
+            const secs=o.plain_english_summary.split(' | ');
+            const sectionIcons={'FORMULA':'📐','POPULATION':'👥','COMPLETIONS':'✅','PLAN FINANCIALS':'💰','PATIENT BENEFITS':'💊'};
+            const sectionColors={'FORMULA':'#6D28D9','POPULATION':'#1D4ED8','COMPLETIONS':'#0369A1','PLAN FINANCIALS':'#15803D','PATIENT BENEFITS':'#B45309'};
+            const sectionBgs={'FORMULA':'#F5F3FF','POPULATION':'#EFF6FF','COMPLETIONS':'#F0F9FF','PLAN FINANCIALS':'#F0FDF4','PATIENT BENEFITS':'#FFFBEB'};
+            if(secs.length>=4){
+              return`<div>
+                <div style="font-size:.72rem;font-weight:700;color:#7C3AED;letter-spacing:.04em;margin-bottom:.55rem;display:flex;align-items:center;gap:.4rem">
+                  🤖 AI Analysis
+                  <span style="font-size:.65rem;font-weight:500;color:var(--g400);font-style:italic">— powered by Claude · ${o.measure_name}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.45rem">
+                  ${secs.map(s=>{
+                    const parts=s.match(/^([A-Z ]+):\s*(.*)$/s);
+                    const label=parts?parts[1].trim():null;
+                    const body=parts?parts[2]:s;
+                    const icon=sectionIcons[label]||'';
+                    const color=sectionColors[label]||'#4C1D95';
+                    const bg=sectionBgs[label]||'#F8F8FF';
+                    return`<div style="background:${bg};border:1px solid rgba(0,0,0,.06);border-radius:8px;padding:.55rem .7rem">
+                      ${label?`<div style="font-size:.66rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.05em;margin-bottom:.22rem">${icon} ${label}</div>`:''}
+                      <div style="font-size:.77rem;color:#1E1B4B;line-height:1.58">${body}</div>
+                    </div>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            }
+            return`<div style="font-size:.82rem;color:#4C1D95;line-height:1.55"><strong style="color:#7C3AED">AI Analysis:</strong> ${o.plain_english_summary}</div>`;
+          })():''}
+
+          ${(o.stars_improvement_rationale||o.key_risks||o.key_opportunities||o.recommended_approach)?`
+          <div style="display:flex;flex-direction:column;gap:.6rem;font-size:.75rem;color:var(--g700);line-height:1.6;padding-top:${o.plain_english_summary?'.75rem':'0'};${o.plain_english_summary?'border-top:1px solid var(--g100)':''}">
+            ${o.stars_improvement_rationale?`<div><strong style="color:var(--g900)">Stars Improvement Rationale:</strong><br>${o.stars_improvement_rationale}</div>`:''}
+            ${o.key_risks?(()=>{let r=o.key_risks;try{r=JSON.parse(r);}catch(e){}return Array.isArray(r)?`<div><strong style="color:var(--g900)">Key Risks:</strong><ul style="margin:.3rem 0 0 1.2rem;padding:0">${r.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:(r?`<div><strong style="color:var(--g900)">Key Risks:</strong><br>${r}</div>`:'')})():''}
+            ${o.key_opportunities?(()=>{let op=o.key_opportunities;try{op=JSON.parse(op);}catch(e){}return Array.isArray(op)?`<div><strong style="color:var(--g900)">Key Opportunities:</strong><ul style="margin:.3rem 0 0 1.2rem;padding:0">${op.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:(op?`<div><strong style="color:var(--g900)">Key Opportunities:</strong><br>${op}</div>`:'')})():''}
+            ${o.recommended_approach?`<div><strong style="color:var(--g900)">Recommended Approach:</strong><br>${o.recommended_approach}</div>`:''}
+          </div>`:''}
+
+          <div style="padding-top:.5rem;border-top:1px solid var(--g100);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+            <div style="font-size:.7rem;color:var(--g400)">
+              ${o.ai_analysis?`Analysis run on this measure × plan. Data may have changed — re-run to refresh.`:`No AI analysis yet for this measure.`}
+            </div>
+            ${_activeAnalyses[o.measure_key+'_'+o.plan_key]
+              ?`<button disabled style="display:flex;align-items:center;gap:.35rem;background:var(--teal);color:#fff;border:none;padding:.38rem .9rem;border-radius:6px;font-size:.75rem;font-weight:600;opacity:.65;cursor:not-allowed">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="animation:spin 1s linear infinite"><path d="M6 1a5 5 0 1 1-3.54 1.46" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>
+                  Analyzing…
+                </button>`
+              :`<button onclick="event.stopPropagation();runAiAnalysis('${o.measure_key}','${o.plan_key}')" style="display:flex;align-items:center;gap:.35rem;background:var(--teal);color:#fff;border:none;padding:.38rem .9rem;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;transition:opacity .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 6A4 4 0 1 1 6 2M6 2l2-2M6 2l2 2" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  ${o.ai_analysis?'Re-run AI Analysis':'Run AI Analysis'}
+                </button>`}
+          </div>
         </div>
-      </details>`:''}
+      </details>`:`
+      <div style="margin:.25rem 1.3rem .5rem;border:1px dashed var(--g100);border-radius:8px;padding:.6rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;background:var(--g50)">
+        <div style="font-size:.75rem;color:var(--g400)">No AI analysis yet — run to get Claude-generated closure rates, costs, and ROI</div>
+        ${_activeAnalyses[o.measure_key+'_'+o.plan_key]
+          ?`<button disabled style="display:flex;align-items:center;gap:.35rem;background:var(--teal);color:#fff;border:none;padding:.38rem .9rem;border-radius:6px;font-size:.75rem;font-weight:600;opacity:.65;cursor:not-allowed">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="animation:spin 1s linear infinite"><path d="M6 1a5 5 0 1 1-3.54 1.46" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>
+              Analyzing…
+            </button>`
+          :`<button onclick="runAiAnalysis('${o.measure_key}','${o.plan_key}')" style="display:flex;align-items:center;gap:.35rem;background:var(--teal);color:#fff;border:none;padding:.38rem .9rem;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v4l2.5 2.5M6 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/></svg>
+              Run AI Analysis
+            </button>`}
+      </div>`}
+
       <button class="launch-btn" onclick="launchCampaign('${o.measure_key}','${sel.key}')">
         Launch This Campaign — ${o.measure_name} → ${sel.name.replace('Aurora ','')} &nbsp;→
       </button>
-    </div>`;
+    </details>`;
   }).join('')}
 
   <!-- SECTION 3: PORTFOLIO VIEW (collapsed) -->
   <details class="section-card" ${S.portfolioOpen?'open':''} ontoggle="S.portfolioOpen=this.open">
     <summary>
       <div style="display:flex;align-items:center;gap:.65rem">
-        <span>📋</span>
+        <span style="width:22px;height:22px;background:var(--teal-ll);border-radius:5px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="2" rx="1" fill="#FB4E0B"/><rect x="1" y="5" width="7" height="2" rx="1" fill="#FB4E0B"/><rect x="1" y="9" width="9" height="2" rx="1" fill="#FB4E0B"/></svg></span>
         <div>
           <div style="font-weight:700;font-size:.88rem;color:var(--g900)">All Opportunities — ${sel.name.replace('Aurora ','')}</div>
           <div style="font-size:.74rem;color:var(--g400);margin-top:.1rem">${planFin.length} measures · sorted by net return · expand to see full table</div>
@@ -2783,23 +3010,28 @@ function renderOpp(){
             <th><input type="checkbox" id="port-sel-all" onchange="document.querySelectorAll('.port-sel-cb').forEach(cb=>cb.checked=this.checked)"> All</th>
             <th>Measure</th><th>Open Gaps</th><th>Members</th>
             <th>Est. Completions</th><th>Est. Cost</th>
-            <th>Est. Bonus <span style="font-size:.65rem;font-weight:400;color:var(--g400)">(this measure × plan)</span></th>
+            <th>Est. Benefit <span style="font-size:.65rem;font-weight:400;color:var(--g400)">(CMS bonus + medical savings)</span></th>
             <th>Confidence</th><th>Net Return <span style="font-size:.65rem;font-weight:400;color:var(--g400)">est.</span></th>
           </tr></thead>
           <tbody>
             ${[...planFin].sort((a,b)=>b.net_return-a.net_return).map(o=>{
               const conf=o.open_population>=20&&Math.round(o.compliance_rate*100)>=30?'HIGH':o.open_population>=10?'MED':'LOW';
               const confColor={'HIGH':'#16a34a','MED':'#D97706','LOW':'#DC2626'}[conf];
-              const bonusCapped=_capB(o.cms_bonus_expected,planRev);
-              const netCapped=bonusCapped-o.total_cost;
+              // Use AI-verified values when available; fall back to pre-AI estimates
+              const aiBonus=o.ai_analysis?(o.cms_bonus||o.cms_bonus_expected):o.cms_bonus_expected;
+              const aiMedSavings=o.ai_analysis?(o.medical_savings||0):0;
+              const bonusCapped=_capB(aiBonus,planRev);
+              const totalBenefitRow=bonusCapped+aiMedSavings;
+              const netCapped=totalBenefitRow-o.total_cost;
+              const aiTag=o.ai_analysis?`<span style="font-size:.6rem;background:#EDE9FE;color:#7C3AED;border-radius:3px;padding:.05rem .25rem;font-weight:700;margin-left:.2rem">AI</span>`:'';
               return`<tr>
                 <td><input type="checkbox" class="port-sel-cb" data-mk="${o.measure_key}"></td>
-                <td><strong>${o.measure_code}</strong><br><span style="font-size:.72rem;color:var(--g400)">${o.measure_name}</span></td>
+                <td><strong>${o.measure_code}</strong>${aiTag}<br><span style="font-size:.72rem;color:var(--g400)">${o.measure_name}</span></td>
                 <td>${o.open_gaps.toLocaleString()}</td>
                 <td>${o.open_population.toLocaleString()}</td>
                 <td style="color:var(--teal)">${Math.round(o.total_expected_closures)}</td>
                 <td>$${o.total_cost.toLocaleString()}</td>
-                <td style="color:#16a34a">${_fmtN(bonusCapped)}</td>
+                <td style="color:#16a34a">${_fmtN(totalBenefitRow)}${aiMedSavings>0?`<br><span style="font-size:.65rem;color:var(--g400)">CMS ${_fmtN(bonusCapped)} + med ${_fmtN(aiMedSavings)}</span>`:''}</td>
                 <td><span style="font-weight:700;color:${confColor};font-size:.78rem">${conf}</span></td>
                 <td style="font-weight:700;color:${netCapped>=0?'#16a34a':'var(--red)'}">${_fmtN(netCapped)}</td>
               </tr>`;
@@ -2817,17 +3049,22 @@ function renderOpp(){
   <!-- SECTION 4: PORTFOLIO BUDGET PLANNER -->
   <div class="section-card" style="padding:1.25rem 1.5rem">
     <div style="margin-bottom:1.1rem">
-      <div style="font-weight:700;font-size:.95rem;color:var(--g900)">Portfolio Budget Planner</div>
-      <div style="font-size:.76rem;color:var(--g400);margin-top:.2rem">Enter your available outreach budget. Campaigns ranked by ROI and allocated in order. <span style="color:var(--amber)">All outcomes projected/estimated.</span> <span style="font-size:.67rem;color:var(--g500)">(full portfolio — all ${fin.length} opportunities across all plans)</span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+        <div style="font-weight:700;font-size:.95rem;color:var(--g900)">Portfolio Budget Planner</div>
+        ${(()=>{const unanalyzed=(fin||[]).filter(o=>!o.ai_analysis).length;return`<button id="portfolio-analyze-all-btn" onclick="runPortfolioAnalysisBatch('portfolio-analyze-all-btn')" style="background:var(--teal);color:#fff;border:none;border-radius:7px;padding:.38rem .95rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap" title="Run AI analysis on all unanalyzed opportunities, then re-rank by verified net return">${unanalyzed>0?`Analyze All & Rank (${unanalyzed} remaining)`:'Re-run All AI Analyses'}</button>`;})()}
+      </div>
+      <div style="font-size:.76rem;color:var(--g400);margin-top:.2rem">Enter your available outreach budget. <strong style="color:var(--g600)">Ranked by verified AI net return</strong> — run AI analysis first for accurate ranking. <span style="color:var(--amber)">All outcomes projected/estimated.</span> <span style="font-size:.67rem;color:var(--g500)">(full portfolio — all ${fin.length} opportunities across all plans)</span></div>
       <!-- PM-facing legend -->
       <div style="margin-top:.85rem;display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
         <!-- Funding status legend -->
         <div style="background:var(--g50);border:1px solid var(--g200);border-radius:8px;padding:.65rem .85rem;font-size:.73rem;line-height:1.7">
           <div style="font-weight:700;color:var(--g800);margin-bottom:.3rem;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em">Funding Status</div>
           <div style="display:flex;flex-direction:column;gap:.18rem">
-            <div><span style="color:var(--teal);font-weight:700">● Full</span> — All 3 tiers funded. Every eligible member contacted via their preferred channel (digital + phone + mail). Maximum gap closures.</div>
-            <div><span style="color:var(--amber);font-weight:700">◑ Partial</span> — Budget covers Tier 1 or Tier 1+2 only. High-propensity members contacted first; lower-propensity skipped this cycle.</div>
-            <div><span style="color:var(--g400);font-weight:700">○ Skip</span> — Budget exhausted. Opportunity identified but no outreach this cycle.</div>
+            <div><span style="color:var(--teal);font-weight:700">● Full</span> — T1+T2 fully funded. AI confirms profitable. Cost and return match the opportunity card exactly.</div>
+            <div><span style="color:var(--amber);font-weight:700">◑ Partial</span> — T1 only funded. Either T1+T2 would be a loss but T1 alone is profitable, or T1+T2 didn't fit the budget.</div>
+            <div><span style="color:var(--red);font-weight:700">✗ Loss</span> — AI confirmed negative ROI at all tiers. Budget <strong>not spent</strong> — this money stays available.</div>
+            <div><span style="color:var(--g400);font-weight:700">○ Skip</span> — Budget exhausted before reaching this opportunity.</div>
+            <div style="margin-top:.25rem;font-size:.69rem;color:var(--g500)">Budget = ceiling, not a spending target. Loss campaigns are skipped to preserve profit. T3 (High Touch) excluded — AI bonus covers T1+T2 scope only.</div>
           </div>
         </div>
         <!-- Tier legend -->
@@ -2859,38 +3096,52 @@ function renderOpp(){
         <div style="font-size:.78rem;font-weight:700;color:var(--g700);margin-bottom:.6rem;text-transform:uppercase;letter-spacing:.04em">What to do with this budget</div>
         <div style="display:flex;flex-direction:column;gap:.25rem;max-height:400px;overflow-y:auto">
           ${funded.map((o,i)=>{
-            const cls=o.funding==='unfunded'?'unfunded':o.funding==='full'?'full':'partial';
-            const icon=o.funding==='unfunded'?'○':o.funding==='full'?'●':'◑';
-            const iconColor=o.funding==='unfunded'?'var(--g400)':o.funding==='full'?'var(--teal)':'var(--amber)';
-            const lbl=o.funding==='unfunded'?'Skip':o.funding==='full'?'Full ✓':'Partial ◑';
-            const lblColor=o.funding==='unfunded'?'var(--g400)':o.funding==='full'?'var(--teal)':'var(--amber)';
-            // Tier coverage badge for this row
+            const cls=o.funding==='unfunded'?'unfunded':o.funding==='loss'?'unfunded':o.funding==='full'?'full':'partial';
+            const icon=o.funding==='unfunded'?'○':o.funding==='loss'?'✗':o.funding==='full'?'●':'◑';
+            const iconColor=o.funding==='unfunded'?'var(--g400)':o.funding==='loss'?'var(--red)':o.funding==='full'?'var(--teal)':'var(--amber)';
+            const lbl=o.funding==='unfunded'?'Skip':o.funding==='loss'?'Loss ✗':o.funding==='full'?'Full ✓':'Partial ◑';
+            const lblColor=o.funding==='unfunded'?'var(--g400)':o.funding==='loss'?'var(--red)':o.funding==='full'?'var(--teal)':'var(--amber)';
+            // Tier coverage badge — Full = T1+T2 (AI-modeled scope); Partial = T1 only; Loss = AI says no
             const tierTag=o.funding==='full'
-              ?`<span title="All 3 tiers: T1 Digital + T2 Light Incentive + T3 High Touch" style="font-size:.65rem;background:#e0f2fe;color:#0284c7;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">T1+T2+T3</span>`
+              ?`<span title="T1 Digital-first + T2 Light Incentive — the full AI-modeled scope. Cost and return match the opportunity card exactly." style="font-size:.65rem;background:#e0f2fe;color:#0284c7;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">T1+T2</span>`
+              :o.funding==='loss'
+                ?`<span title="AI analysis confirms negative ROI at all tiers — budget NOT spent on this campaign." style="font-size:.65rem;background:#fee2e2;color:#dc2626;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">Negative ROI</span>`
               :o.funding==='partial'
-                ?(o.funding_label==='Tier 1+2 only'
-                  ?`<span title="T1 Digital-first + T2 Light Incentive (high &amp; mid propensity members only)" style="font-size:.65rem;background:#ede9fe;color:#7c3aed;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">T1+T2</span>`
-                  :`<span title="T1 Digital-first only (high propensity members, email+SMS, no incentive)" style="font-size:.65rem;background:#fef3c7;color:#b45309;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">T1 only</span>`)
+                ?`<span title="T1 Digital-first only (high propensity members, email+SMS, no incentive)" style="font-size:.65rem;background:#fef3c7;color:#b45309;border-radius:3px;padding:.05rem .3rem;font-weight:600;white-space:nowrap">T1 only</span>`
                 :'';
             const bonusCapped=_capB(o.funded_bonus||0,planRev);
-            const hasReturn=bonusCapped>0;
+            const oppMedSavings=o.funded_medical_savings||0; // proportional medical savings already computed by _greedyAlloc
+            const oppTotalBenefit=bonusCapped+oppMedSavings; // CMS bonus + medical savings = total plan benefit
+            const hasReturn=oppTotalBenefit>0;
+            // Net = total benefit (CMS + medical savings) minus funded cost — matches opportunity card exactly
+            const oppNet=oppTotalBenefit-(o.funded_cost||0);
             const isAnalyzing=!!_activeAnalyses[o.measure_key+'_'+o.plan_key];
-            const returnLabel=o.funding!=='unfunded'
+            const returnLabel=o.funding==='loss'
+              ?`<span style="font-size:.72rem;color:var(--red)">Negative ROI — budget preserved</span>`
+              :o.funding!=='unfunded'
               ?(o.ai_analysis
                 ?(hasReturn
-                  ?`<span style="font-size:.72rem;color:#16a34a">${_fmtN(bonusCapped)} return</span>`
+                  ?`<span style="font-size:.72rem;color:#16a34a">${_fmtN(oppTotalBenefit)} return${oppMedSavings>0?` <span title="CMS bonus ${_fmtN(bonusCapped)} + medical savings ${_fmtN(oppMedSavings)}" style="color:var(--g400);font-weight:400">(CMS+med)</span>`:''}</span>`
                   :`<span style="font-size:.72rem;color:var(--g500)">analyzed · no positive return</span>`)
                 :(isAnalyzing
                   ?`<span style="font-size:.72rem;color:var(--amber)">⏳ analyzing…</span>`
                   :`<button onclick="runAiAnalysis('${o.measure_key}','${o.plan_key}')" style="font-size:.72rem;color:var(--amber);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;text-decoration:underline" title="Click to run AI analysis for this opportunity">⚠ run AI</button>`))
               :`<span style="font-size:.72rem;color:var(--g400)">need $${o.total_cost.toLocaleString()}</span>`;
-            return`<div class="alloc-row ${cls}">
+            // Only show net return if AI analysis has verified the bonus (pre-AI estimates are inflated)
+            const netBadge=o.funding==='loss'
+              ?''
+              :o.funding!=='unfunded'&&o.ai_analysis&&hasReturn
+              ?`<span style="font-size:.72rem;font-weight:700;color:${oppNet>=0?'#16a34a':'var(--red)'};white-space:nowrap">${_fmtN(oppNet)} net</span>`
+              :(o.funding!=='unfunded'&&!o.ai_analysis?`<span style="font-size:.72rem;color:var(--g400);white-space:nowrap">run AI for return</span>`:'');
+            const isClickable=o.funding!=='unfunded'&&o.funding!=='loss';
+            return`<div class="alloc-row ${cls}" ${isClickable?`onclick="navigateToOpp('${o.measure_key}','${o.plan_key}')" style="cursor:pointer" title="Click to jump to this opportunity"`:''}>
               <span style="color:${iconColor};font-size:.85rem;flex-shrink:0">${icon}</span>
               <span style="min-width:1.5ch;color:var(--g500);font-size:.72rem">${i+1}.</span>
-              <span style="flex:1;color:var(--g700);font-size:.79rem">${o.measure_code} × ${o.plan_name.replace('Aurora ','')}</span>
+              <span style="flex:1;color:${isClickable?'var(--teal)':'var(--g700)'};font-size:.79rem;${isClickable?'text-decoration:underline;text-underline-offset:2px;':''}">${o.measure_code} × ${o.plan_name.replace('Aurora ','')}</span>
               ${tierTag}
-              ${o.funding!=='unfunded'
-                ?`<span style="font-size:.72rem;color:var(--g500)">$${(o.funded_cost||0).toLocaleString()}</span>${returnLabel}`
+              ${netBadge}
+              ${o.funding!=='unfunded'&&o.funding!=='loss'
+                ?`<span style="font-size:.72rem;color:var(--g500)">$${(o.funded_cost||0).toLocaleString()} cost</span>${returnLabel}`
                 :returnLabel}
               <span style="font-size:.72rem;font-weight:600;color:${lblColor};min-width:55px;text-align:right">${lbl}</span>
             </div>`;
@@ -2900,17 +3151,21 @@ function renderOpp(){
       <div style="background:linear-gradient(135deg,#EAF6F2,#F5FBF9);border:1.5px solid #A7D9C8;border-radius:10px;padding:1.1rem 1.25rem">
         <div style="font-size:.78rem;font-weight:700;color:var(--teal);margin-bottom:.85rem">What you get back <span style="font-size:.67rem;font-weight:400;color:var(--g500)">— all projected/estimated</span></div>
         ${[
-          ['Campaigns funded',`${bpFundedCount} fully${bpPartialCount>0?' · '+bpPartialCount+' partial':''} of ${funded.length}`,'var(--teal)','(full portfolio, all funded campaigns)'],
-          ['Expected completions','~'+Math.round(bpTotalClosures).toLocaleString(),'var(--teal)','(full portfolio, projected)'],
-          ['Portfolio Stars improvement','+'+bpPortStars.toFixed(3)+'★','var(--teal)','(full portfolio, capped 0.25★/plan)'],
-          ['Total CMS bonus gained',_fmtN(bpTotalBonus),'#16a34a','(full portfolio, all funded campaigns)'],
-          ['Total outreach cost',_fmtN(bpTotalCost),'var(--amber)','(full portfolio, all funded campaigns)'],
-          ['Net return',_fmtN(bpNetReturn),bpNetReturn>=0?'#16a34a':'var(--red)','(full portfolio, estimated)'],
+          ['Campaigns funded',`${bpFundedCount} fully${bpPartialCount>0?' · '+bpPartialCount+' partial':''} of ${funded.length}`,'var(--teal)','(all profitable campaigns)'],
+          ...(bpLossCount>0?[['Loss campaigns skipped',`${bpLossCount} — AI confirmed negative ROI`,'var(--red)','(budget preserved, not spent)']]:[]),
+          ['Expected completions','~'+Math.round(bpTotalClosures).toLocaleString(),'var(--teal)','(funded campaigns only, projected)'],
+          ['Portfolio Stars improvement','+'+bpPortStars.toFixed(3)+'★','var(--teal)','(funded campaigns only, capped 0.25★/plan)'],
+          ['CMS bonus gained',_fmtN(bpTotalBonus),'#16a34a','(Stars quality bonus, funded campaigns only)'],
+          ...(bpTotalMedSavings>0?[['+ Medical cost savings',_fmtN(bpTotalMedSavings),'#0891b2','(non-compliance → compliance, funded campaigns only)']]:[]),
+          ...(bpTotalMedSavings>0?[['= Total benefit',_fmtN(bpTotalBenefit),'#16a34a','(CMS bonus + medical savings)']]:[]),
+          ['Total outreach cost',_fmtN(bpTotalCost),'var(--amber)','(funded campaigns only)'],
+          ['Net return',_fmtN(bpNetReturn),bpNetReturn>=0?'#16a34a':'var(--red)','(total benefit − cost, estimated)'],
+          ...(bpLossCount>0?[['Budget preserved',_fmtN(S.oppBudget-bpTotalCost),'#16a34a','(loss campaigns skipped — not spent)']]:[]),
         ].map(([l,v,c,scope])=>`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:.35rem 0;border-bottom:1px solid rgba(0,0,0,.06);gap:.5rem">
           <span style="font-size:.78rem;color:var(--g600)">${l} <span style="font-size:.65rem;color:var(--g400);font-weight:400">${scope}</span></span>
           <strong style="font-size:.88rem;color:${c};white-space:nowrap">${v}</strong>
         </div>`).join('')}
-        <div style="font-size:.69rem;color:var(--g500);margin-top:.75rem;line-height:1.6"><strong style="color:var(--g600)">How to read these numbers:</strong> "CMS bonus" = estimated increase in CMS quality bonus payments if these gaps are closed — this is the same number shown on each opportunity card. "Total outreach cost" = staff time + incentives to contact members (T1 digital ≈ $0.50/member, T2 phone ≈ $207/member). "Net return" = CMS bonus minus outreach cost. All figures are projections using synthetic demo data; actual results depend on member engagement and execution quality.</div>
+        <div style="font-size:.69rem;color:var(--g500);margin-top:.75rem;line-height:1.6"><strong style="color:var(--g600)">How to read these numbers:</strong> <strong>CMS bonus</strong> = estimated increase in CMS Stars quality bonus payments when gaps are closed (Stars improvement × plan revenue × 5% bonus rate). <strong>Medical cost savings</strong> = moving members from non-compliant to compliant reduces preventable complication costs; each closed gap saves the plan annual_PMPM × measure savings rate (e.g. COL=30%, EED=22%, BCS=15%). <strong>Total benefit</strong> = CMS bonus + medical savings — both flow directly to the plan. <strong>Total outreach cost</strong> = staff time + incentives (T1 digital ≈ $0.50/member, T2 light incentive ≈ $15.50/member). <strong>Net return</strong> = total benefit − outreach cost. All figures are projections using synthetic demo data.</div>
       </div>
     </div>
   </div>
@@ -2919,7 +3174,7 @@ function renderOpp(){
   <details class="section-card" ${S.aiPanelOpen?'open':''} ontoggle="S.aiPanelOpen=this.open">
     <summary>
       <div style="display:flex;align-items:center;gap:.65rem">
-        <span>🤖</span>
+        <span style="width:22px;height:22px;background:#EDE9FE;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.6rem;font-weight:800;color:#7C3AED;letter-spacing:-.01em">AI</span>
         <div>
           <div style="font-weight:700;font-size:.88rem;color:var(--g900)">AI Opportunity Analysis — powered by Claude</div>
           <div style="font-size:.74rem;color:var(--g400);margin-top:.1rem">Claude scans all ${fin.length} opportunities, ranks by financial impact, and explains its reasoning</div>
@@ -2930,7 +3185,7 @@ function renderOpp(){
     <div style="padding:0 1.5rem 1.5rem">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;flex-wrap:wrap;gap:.5rem">
         <div style="font-size:.78rem;color:var(--g400)">Click Run to analyze all opportunities with Claude AI. This may take 30–60 seconds.</div>
-        <button id="ai-analyze-btn" onclick="runAiAnalysis()" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);color:#6366f1;border-radius:7px;padding:.4rem 1.1rem;font-size:.82rem;cursor:pointer;font-weight:600">Run AI Analysis</button>
+        <button id="ai-analyze-btn" onclick="runAiAnalysisAll()" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);color:#6366f1;border-radius:7px;padding:.4rem 1.1rem;font-size:.82rem;cursor:pointer;font-weight:600">Run AI Analysis</button>
       </div>
       <div id="ai-analysis-results"></div>
       <div id="ai-analysis-empty" style="text-align:center;padding:1.5rem;color:var(--g400);font-size:.82rem">
@@ -3055,9 +3310,9 @@ function renderS1(){
       </div>
       <div class="osc-meta">
         <span><span class="${dc} sw-dot"></span>wt ${sw}</span>
-        <span>📊 ${o.openCount} gaps</span>
-        <span>⚡ ${o.avgProp.toFixed(2)} prop</span>
-        <span>⭐ ${now}→${tgt}</span>
+        <span>${o.openCount} gaps</span>
+        <span>${o.avgProp.toFixed(2)} propensity</span>
+        <span>${now}→${tgt}★</span>
       </div>
     </div>`;
   }).join('');
@@ -3508,6 +3763,7 @@ document.addEventListener('click',e=>{
           console.error('send-all error',err);
         }
         S.sendAllInProgress=false;renderRight();
+        await refreshOpportunities();
       })();
       break;
   }
@@ -3522,10 +3778,12 @@ loadData().then(loadLatestSession).then(()=>{
   if(_savedBudget){S.oppBudget=parseInt(_savedBudget,10);S.oppBudgetInit=true;sessionStorage.removeItem('nba_oppBudget');}
   if(S._highlightCardKey){
     _aiToast('✓ AI analysis complete — results shown below',false);
+    // Scroll to the analyzed card after a brief delay for DOM settle
     setTimeout(()=>{
       const cardId='card-'+S._highlightCardKey.replace('_','-');
       const el=document.getElementById(cardId);
       if(el){el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+      // Flash highlight then clear
       setTimeout(()=>{S._highlightCardKey=null;try{renderOpp();}catch(e){}},3000);
     },400);
   }
@@ -3627,7 +3885,7 @@ async function renderDataSources() {
 
       <!-- Format guide collapsible -->
       <details style="margin-top:.6rem;border:1px solid var(--g200);border-radius:var(--r);background:var(--g50)">
-        <summary style="padding:.5rem .75rem;cursor:pointer;font-size:.78rem;font-weight:600;color:var(--teal);user-select:none">📋 Required Excel Format &amp; Column Guide</summary>
+        <summary style="padding:.5rem .75rem;cursor:pointer;font-size:.78rem;font-weight:600;color:var(--teal);user-select:none">Required Excel Format &amp; Column Guide</summary>
         <div style="padding:.6rem .9rem .75rem;font-size:.76rem;line-height:1.6">
           <p style="margin:0 0 .5rem;color:var(--g600)">Your Excel workbook must have exactly <strong>3 sheets</strong> with these names and columns:</p>
 
@@ -3790,6 +4048,7 @@ function dsHandleDropMain(e) {
 function dsHandleFileMain(file) {
   DS.file = file;
   DS.importResult = null; DS.importing = false;
+  // Open the modal immediately so user doesn't have to click the button separately
   DS.modalOpen = true;
   renderDataSources();
   setTimeout(()=>{
@@ -3960,6 +4219,7 @@ async function dsImport() {
     if (!res.ok) {
       DS.importResult = { error: json.detail || json.error || `Upload failed (HTTP ${res.status})` };
     } else {
+      // Poll status until done
       const runId = json.run_id;
       let done = false;
       for (let i = 0; i < 60 && !done; i++) {
@@ -3981,7 +4241,7 @@ async function dsImport() {
           }
         } catch(e) { /* keep polling */ }
       }
-      if (!done) DS.importResult = { rows_imported: 0, tables_loaded: [] };
+      if (!done) DS.importResult = { rows_imported: json.rows_received || 0, tables_loaded: [] };
       await loadSources();
       loadData();
     }
