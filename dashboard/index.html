@@ -2784,8 +2784,6 @@ function renderOpp(){
               <span style="font-size:.76rem;font-weight:700;color:#F15A22">Likely to Act <span style="font-size:.67rem;font-weight:400">(digital outreach only)</span></span>
               <span style="font-size:.72rem;font-weight:600">${t1m} members</span>
             </div>
-            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">${o.tier1_definition||'High propensity · digital literacy · just need a reminder'}</div>
-            ${o.tier1_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier1_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t1cpm}/member · $${o.tier1_cost.toLocaleString()} total</strong></span>
               <span>Expected: <strong style="color:#F15A22">~${t1exp} completions</strong> at ${t1m>0?Math.round(t1exp/t1m*100):Math.round(t1r*100)}%</span>
@@ -2796,8 +2794,6 @@ function renderOpp(){
               <span style="font-size:.76rem;font-weight:700;color:#92400E">Probably Will Act <span style="font-size:.67rem;font-weight:400">(SMS + incentive)</span></span>
               <span style="font-size:.72rem;font-weight:600">${t2m} members</span>
             </div>
-            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">${o.tier2_definition||'Reachable but need motivation · gift card incentive'}</div>
-            ${o.tier2_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier2_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t2cpm}/member · $${o.tier2_cost.toLocaleString()} total</strong></span>
               <span>Expected: <strong style="color:#D97706">~${t2exp} completions</strong> at ${t2m>0?Math.round(t2exp/t2m*100):Math.round(t2r*100)}%</span>
@@ -2808,16 +2804,11 @@ function renderOpp(){
               <span style="font-size:.76rem;font-weight:700;color:#5B21B6">Need High Touch <span style="font-size:.67rem;font-weight:400">(call + voucher)</span></span>
               <span style="font-size:.72rem;font-weight:600">${t3m} members</span>
             </div>
-            <div style="font-size:.72rem;color:var(--g600);margin-bottom:.3rem">${o.tier3_definition||'Language barriers, access issues, low digital literacy'}</div>
-            ${o.tier3_closure_rationale?`<div style="font-size:.68rem;color:#92400E;font-style:italic;margin-bottom:.25rem">${o.tier3_closure_rationale}</div>`:''}
             <div style="display:flex;gap:1rem;font-size:.72rem;flex-wrap:wrap">
               <span>Cost: <strong>~$${t3cpm}/member · $${o.tier3_cost.toLocaleString()} total</strong></span>
               <span>Expected: <strong style="color:#7C3AED">~${t3exp} completions</strong> at ${t3m>0?Math.round(t3exp/t3m*100):Math.round(t3r*100)}%</span>
             </div>
           </div>`:`<div class="tier-block tier-hightouch" style="opacity:.4;margin-bottom:.75rem;font-size:.75rem">Need High Touch — no eligible members</div>`}
-          <div style="font-size:.67rem;color:var(--g400);line-height:1.4;padding:.3rem .1rem;margin-bottom:.4rem">
-            Projected member counts based on estimated eligible population of ${(o.eligible_pool||o.eligible_members||0).toLocaleString()} members (plan population × eligibility rate for this measure). Compliance rate and tier propensity derived from actual uploaded data.
-          </div>
           <div style="background:linear-gradient(135deg,#EAF6F2,#F5FBF9);border:1.5px solid #A7D9C8;border-radius:8px;padding:.75rem .9rem">
             <div style="font-size:.74rem;font-weight:700;color:var(--teal);margin-bottom:.5rem">If you target Tier 1 + Tier 2 only <span style="font-size:.67rem;font-weight:400;color:var(--g500)">— all figures estimated</span></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem .75rem;font-size:.75rem;margin-bottom:.5rem">
@@ -3077,7 +3068,6 @@ function renderOpp(){
           </div>
         </div>
       </div>
-      <div style="margin-top:.5rem;font-size:.68rem;color:var(--g400);font-style:italic">Ranking: greedy allocation by ROI ratio (highest return-per-dollar first). Partial campaigns run T1 alone or T1+T2 when budget is tight.</div>
     </div>
     <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:1.1rem">
       <div style="display:flex;align-items:center;gap:.4rem">
