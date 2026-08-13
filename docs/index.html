@@ -565,7 +565,7 @@ const API=(()=>{
 })();
 
 /* ── Utilities ─────────────────────────────────────────────────────── */
-function incLabel(c){return{GIFTCARD_15:'$15 Gift Card',GIFTCARD_25:'$25 Gift Card',FIT_KIT_MAILER:'FIT Kit Mailer',TRANSPORT_VOUCHER:'Transport Voucher'}[c]||c||'—'}
+function incLabel(c){return{GIFTCARD_15:'$15 Gift Card',GIFTCARD_25:'$25 Gift Card',GIFTCARD_35:'$35 Gift Card',GIFTCARD_50:'$50 Gift Card',FIT_KIT_MAILER:'FIT Kit Mailer (WhatsApp)',TRANSPORT_VOUCHER:'Transport Voucher'}[c]||c||'—'}
 function incCost(c){const m=(c||'').match(/GIFTCARD_(\d+)/);if(m)return+m[1];if(c==='FIT_KIT_MAILER')return 8;if(c==='TRANSPORT_VOUCHER')return 20;return 0}
 function tmpl(mc,lang){return`TMPL_${mc}_PLAIN${lang!=='EN'?'_'+lang:''}_V1`}
 function addDays(iso,n){const d=new Date(iso);d.setDate(d.getDate()+n);return d.toISOString().split('T')[0]}
@@ -1109,6 +1109,22 @@ async function finalizeSession(){
       ]);
       await apiPost(`/session/${S.runId}/outreach`, S.outreachRows);
       await Promise.all(S.traceRows.map(r=>apiPost(`/session/${S.runId}/trace`,r)));
+      // Auto-send all outreach immediately on confirm — no manual "Send All" needed
+      S.sendAllInProgress=true;
+      try{
+        const res=await apiPost(`/send/all/${S.runId}`,{});
+        const results=res.results||[];
+        for(const r of results){
+          if(r.status==='SUPPRESSED'){
+            S.sendState[r.contact_id]={suppressed:true,reason:r.error||'Do Not Contact'};
+          }else if(r.success){
+            S.sendState[r.contact_id]={sent:true,scheduled:r.status==='SCHEDULED',msg:r.message_text};
+          }else{
+            S.sendState[r.contact_id]={failed:true,msg:r.message_text,error:r.error||'Failed'};
+          }
+        }
+      }catch(sendErr){console.warn('Auto send-all error (non-fatal):',sendErr);}
+      S.sendAllInProgress=false;
     }catch(e){console.warn('API write error (non-fatal):',e);}
   }finally{
     // ALWAYS transition to phase 5 even if API writes timed out or threw
@@ -1541,15 +1557,15 @@ function generateCohorts(gaps,mCode){
   }
   const cohorts=[];
   if(c1.length){
-    const inc=mCode==='COL'?'FIT_KIT_MAILER':mCode==='BCS'?'GIFTCARD_25':'GIFTCARD_15';
+    const inc='FIT_KIT_MAILER'; // T1 default: FIT Kit Mailer (WhatsApp, lowest cost)
     const avg=c1.reduce((s,g)=>s+(+(g.nba_propensity_score)||0),0)/c1.length;
     cohorts.push({id:'C1_DIGITAL_HIGH_PROP',name:'Tier 1 — High propensity',
-      rule:'Propensity ≥ 0.70 · digital-first (Email + SMS) · no incentive needed',
+      rule:'Propensity ≥ 0.70 · digital-first (Email + SMS) · FIT Kit Mailer',
       gaps:c1,members:c1.map(g=>S.memberMap[g.member_key]).filter(Boolean),
       priority:1,channelFit:'Email + SMS',avgProp:Math.round(avg*100)/100,incentive:inc});
   }
   if(c2.length){
-    const inc='GIFTCARD_25';
+    const inc='GIFTCARD_15'; // T2 default: $15 Gift Card
     const avg=c2.reduce((s,g)=>s+(+(g.nba_propensity_score)||0),0)/c2.length;
     cohorts.push({id:'C2_MID_PROPENSITY',name:'Tier 2 — Mid propensity',
       rule:'Propensity 0.45–0.70 · SMS + modest incentive',
@@ -1557,8 +1573,7 @@ function generateCohorts(gaps,mCode){
       priority:2,channelFit:'SMS + incentive',avgProp:Math.round(avg*100)/100,incentive:inc});
   }
   if(c3.length){
-    const low=c3.some(g=>(S.memberMap[g.member_key]||{}).socioeconomic_segment==='Low');
-    const inc=low?'TRANSPORT_VOUCHER':'GIFTCARD_25';
+    const inc='GIFTCARD_25'; // T3 default: $25 Gift Card
     const avg=c3.reduce((s,g)=>s+(+(g.nba_propensity_score)||0),0)/c3.length;
     cohorts.push({id:'C3_ACCESS_BARRIER',name:'Tier 3 — High-touch / access-barrier',
       rule:'Propensity < 0.45 · call + voucher · non-English or low digital literacy',
@@ -1576,9 +1591,9 @@ function generateCampaignOptions(){
   const highTouchCohort=c3||c2;
   const langs=[...new Set((highTouchCohort?.members||[]).map(m=>m.language_preference))].filter(l=>l&&l!=='EN');
   const htChDesc=langs.includes('ZH')?'Mandarin SMS/call':langs.includes('ES')?'Spanish bilingual call':'Call (preferred channel)';
-  const c1inc=c1?.incentive||'GIFTCARD_15';
-  const c2inc=c2?.incentive||'GIFTCARD_25';
-  const c3inc=c3?.incentive||'TRANSPORT_VOUCHER';
+  const c1inc=c1?.incentive||'FIT_KIT_MAILER';
+  const c2inc=c2?.incentive||'GIFTCARD_15';
+  const c3inc=c3?.incentive||'GIFTCARD_25';
   const hasMid=!!c2,hasHigh=!!c3;
   const channelParts=[c1?'T1:Email+SMS':null,hasMid?'T2:SMS+incentive':null,hasHigh?`T3:${htChDesc}`:null].filter(Boolean);
   const incParts=[c1?`T1:${incLabel(c1inc)}`:null,hasMid?`T2:${incLabel(c2inc)}`:null,hasHigh?`T3:${incLabel(c3inc)}`:null].filter(Boolean);
@@ -1599,7 +1614,7 @@ function generateCampaignOptions(){
       c1Ch:c1?'Email d1 → SMS d7 → call d14':'—',
       c2Ch:hasMid?'SMS d1 → call d10':'—',
       c3Ch:hasHigh?`${htChDesc} d7 → SMS d14`:'—',
-      c1Inc:'GIFTCARD_25',c2Inc:'GIFTCARD_25',c3Inc:c3inc,
+      c1Inc:'FIT_KIT_MAILER',c2Inc:'GIFTCARD_15',c3Inc:c3inc,
       c1Freq:'Max 3 touches / 21 days',c2Freq:'2 touches / 14 days',c3Freq:'2 touches / 14 days',
       tradeoff:'⚠ Higher cost · better for low-propensity segments · check call opt-outs for T1',
       recommended:false,
@@ -1828,7 +1843,12 @@ function renderEval(){
     return;
   }
   const p=S.evalData.portfolio_summary||{};
-  const campaigns=S.evalData.campaigns||[];
+  const campaigns=[...(S.evalData.campaigns||[])].sort((a,b)=>{
+    const d=new Date(b.outreach_date||0)-new Date(a.outreach_date||0);
+    if(d!==0)return d;
+    // Same date: sort by run ID descending (encodes YYYYMMDD_HHMMSS)
+    return(b.nba_run_id||'').localeCompare(a.nba_run_id||'');
+  });
   const due=(S.evalScheduleDue||{}).due_evaluations||[];
 
   // Simulation panel
@@ -3417,13 +3437,13 @@ function renderS3(){
     const e=S.campEdits;
     const ed=(f,orig)=>e[f]!==undefined&&e[f]!==orig;
     const chOpts=['Email','SMS','Call'];
-    const incOpts=[{v:'GIFTCARD_15',l:'Gift Card $15'},{v:'GIFTCARD_25',l:'Gift Card $25'},{v:'TRANSPORT_VOUCHER',l:'Transport Voucher'},{v:'FIT_KIT_MAILER',l:'Fit Kit Mailer'},{v:'NONE',l:'None'}];
+    const incOpts=[{v:'FIT_KIT_MAILER',l:'FIT Kit Mailer (WhatsApp)'},{v:'GIFTCARD_15',l:'Gift Card $15'},{v:'GIFTCARD_25',l:'Gift Card $25'},{v:'GIFTCARD_35',l:'Gift Card $35'},{v:'GIFTCARD_50',l:'Gift Card $50'},{v:'CUSTOM',l:'Custom $…'}];
     const fbOpts=[{v:'',l:'None'},...chOpts.map(c=>({v:c,l:c}))];
     // Derive defaults from campaign option
     const defPrimCh=(o.c1Ch||'').split(' ')[0]||'EMAIL';
     const defFbCh=o.id==='OPT1'?'SMS':o.id==='OPT2'?'SMS':'';
-    const defC1Inc=o.c1Inc||'GIFTCARD_25';
-    const defC2Inc=o.c2Inc||'GIFTCARD_25';
+    const defC1Inc=o.c1Inc||'FIT_KIT_MAILER';
+    const defC2Inc=o.c2Inc||'GIFTCARD_15';
     const defFreq=o.c1Freq||'';
     const defTheme=`Plain-language, respectful tone · ${S.selOpp?.measure?.measure_code||''} closure reminder`;
     const totMembers=S.selCohorts.reduce((s,c)=>s+c.gaps.length,0);
@@ -3445,15 +3465,11 @@ function renderS3(){
         </div>
         <div class="camp-field">
           <label>T1 Incentive</label>
-          <select data-camp-edit="c1Inc" data-orig="${defC1Inc}" class="${ed('c1Inc',defC1Inc)?'edited':''}">
-            ${incOpts.map(f=>`<option value="${f.v}"${(e.c1Inc||defC1Inc)===f.v?' selected':''}>${f.l}</option>`).join('')}
-          </select>
+          ${(()=>{const cur=e.c1Inc||defC1Inc;const isCustom=cur.startsWith('GIFTCARD_')&&!['GIFTCARD_15','GIFTCARD_25','GIFTCARD_35','GIFTCARD_50'].includes(cur);const selVal=isCustom?'CUSTOM':cur;return`<select data-camp-edit="c1Inc" data-orig="${defC1Inc}" class="${ed('c1Inc',defC1Inc)?'edited':''}" onchange="(function(s){var inp=s.parentNode.querySelector('input');inp.style.display=s.value==='CUSTOM'?'':'none';if(s.value==='CUSTOM')inp.focus();})(this)">${incOpts.map(f=>`<option value="${f.v}"${selVal===f.v?' selected':''}>${f.l}</option>`).join('')}</select><input type="number" min="1" max="999" placeholder="$ amount" style="margin-top:.25rem;width:90px;display:${isCustom?'':'none'}" oninput="(function(inp){const v='GIFTCARD_'+Math.round(inp.value||0);S.campEdits.c1Inc=v;renderS3();})(this)" value="${isCustom?cur.replace('GIFTCARD_',''):''}">`;})()}
         </div>
         <div class="camp-field">
           <label>T2 Incentive</label>
-          <select data-camp-edit="c2Inc" data-orig="${defC2Inc}" class="${ed('c2Inc',defC2Inc)?'edited':''}">
-            ${incOpts.map(f=>`<option value="${f.v}"${(e.c2Inc||defC2Inc)===f.v?' selected':''}>${f.l}</option>`).join('')}
-          </select>
+          ${(()=>{const cur=e.c2Inc||defC2Inc;const isCustom=cur.startsWith('GIFTCARD_')&&!['GIFTCARD_15','GIFTCARD_25','GIFTCARD_35','GIFTCARD_50'].includes(cur);const selVal=isCustom?'CUSTOM':cur;return`<select data-camp-edit="c2Inc" data-orig="${defC2Inc}" class="${ed('c2Inc',defC2Inc)?'edited':''}" onchange="(function(s){var inp=s.parentNode.querySelector('input');inp.style.display=s.value==='CUSTOM'?'':'none';if(s.value==='CUSTOM')inp.focus();})(this)">${incOpts.map(f=>`<option value="${f.v}"${selVal===f.v?' selected':''}>${f.l}</option>`).join('')}</select><input type="number" min="1" max="999" placeholder="$ amount" style="margin-top:.25rem;width:90px;display:${isCustom?'':'none'}" oninput="(function(inp){const v='GIFTCARD_'+Math.round(inp.value||0);S.campEdits.c2Inc=v;renderS3();})(this)" value="${isCustom?cur.replace('GIFTCARD_',''):''}">`;})()}
         </div>
         <div class="camp-field camp-field-full">
           <label>Frequency Plan</label>
@@ -3630,14 +3646,12 @@ function renderRight(){
     </div>`;
   }
 
-  const manualLabel=!S.autoMode&&S.outreachRows.length&&S.phase>=5
-    ?`<p class="outreach-manual-label">Review your outreach plan below. Click <strong>Send All</strong> when ready to deliver messages.</p>`:'';
   const suppressedCount=S.outreachRows.filter(r=>(S.sendState[r.contact_id]?.suppressed)||(r.status==='SUPPRESSED'&&!S.sendState[r.contact_id]?.sent)).length;
   const failedCount=S.outreachRows.filter(r=>S.sendState[r.contact_id]?.failed).length;
   const sendSummary=sentCount>0?`<span class="send-count-badge">✓ ${sentCount} sent${suppressedCount?` · ${suppressedCount} suppressed (DNC/no consent)`:''}${failedCount?` · ${failedCount} failed`:''}</span>`:'';
-  const sendAllBtn=S.outreachRows.length&&!S.autoMode?`<button class="btn-send-all" data-action="send-all" ${S.sendAllInProgress?'disabled':''}>
-    ${S.sendAllInProgress?'Sending…':'Send All'}
-  </button>${sendSummary}`:'';
+  // Send All is now automatic on Confirm & Finalise — no manual button needed
+  const manualLabel='';
+  const sendAllBtn='';
 
   const trcRows=S.traceRows.length?S.traceRows.map((r,i)=>`<tr class="${i>=S.lastTraceSeen?'trace-new':''}">
     <td><code style="font-size:.69rem">${r.timestamp?String(r.timestamp).substring(11,19):'—'}</code></td>
