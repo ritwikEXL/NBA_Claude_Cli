@@ -598,7 +598,8 @@ const S={
   lastTraceSeen:0,sendState:{},sendAllInProgress:false,openCards:{},
   msgPreviews:{},previewsLoading:false,
   deliveryInProgress:false,deliveryProgress:{total:0,sent:0,failed:0,scheduled:0,results:[]},
-  evalData:null,evalLoading:false,evalError:'',evalSelectedRun:'',evalMemberRows:[],
+  evalData:null,evalLoading:false,evalError:'',evalSelectedRun:'',evalMemberRows:[],evalPlanFilter:'',
+  launchedOpps:new Set(),
   convData:{},convPollTimer:null,convSelectedRunId:'',
   simThreads:{},// {contact_id: [{role:'system'|'member', text, ts}]}
   simExpanded:{},// {contact_id: true}
@@ -1125,6 +1126,12 @@ async function finalizeSession(){
         }
       }catch(sendErr){console.warn('Auto send-all error (non-fatal):',sendErr);}
       S.sendAllInProgress=false;
+      // Track this opp as launched so Opportunities tab shows "In Evaluation"
+      if(S.selOpp){
+        const _lm=S.selOpp.measure_key||S.selOpp.measure_code||'';
+        const _lp=S.selOpp.plan_key||S.selOpp.plan_id||'';
+        if(_lm&&_lp){if(!S.launchedOpps)S.launchedOpps=new Set();S.launchedOpps.add(_lm+'_'+_lp);}
+      }
     }catch(e){console.warn('API write error (non-fatal):',e);}
   }finally{
     // ALWAYS transition to phase 5 even if API writes timed out or threw
@@ -1697,6 +1704,13 @@ async function loadEvalData(){
   if(S.evalData){
     S.evalData.campaigns.forEach(c=>loadConversations(c.nba_run_id));
     startConvPolling();
+    // Populate launchedOpps so Opportunities tab shows "In Evaluation" badges
+    // Store both measure_key (M001) and measure_code (BCS) formats for reliable matching
+    if(!S.launchedOpps)S.launchedOpps=new Set();
+    S.evalData.campaigns.forEach(c=>{
+      if(c.measure_key&&c.plan_key)S.launchedOpps.add(c.measure_key+'_'+c.plan_key);
+      if(c.measure_code&&c.plan_key)S.launchedOpps.add(c.measure_code+'_'+c.plan_key);
+    });
   }
 }
 
@@ -1849,6 +1863,11 @@ function renderEval(){
     // Same date: sort by run ID descending (encodes YYYYMMDD_HHMMSS)
     return(b.nba_run_id||'').localeCompare(a.nba_run_id||'');
   });
+  // Plan dropdown — derive unique plans from campaigns, sorted by star rating asc (most urgent first)
+  const _evalPlans=[...new Map(campaigns.map(c=>[c.plan_key||c.plan_name,{key:c.plan_key||c.plan_name,name:c.plan_name||c.plan_key,stars:c.star_rating_current||0}])).values()].sort((a,b)=>a.stars-b.stars);
+  if(S.evalPlanFilter&&!_evalPlans.find(p=>p.key===S.evalPlanFilter))S.evalPlanFilter='';
+  if(!S.evalPlanFilter&&_evalPlans.length)S.evalPlanFilter=_evalPlans[0].key;
+  const filteredCampaigns=S.evalPlanFilter?campaigns.filter(c=>(c.plan_key||c.plan_name)===S.evalPlanFilter):campaigns;
   const due=(S.evalScheduleDue||{}).due_evaluations||[];
 
   // Simulation panel
@@ -1920,14 +1939,14 @@ function renderEval(){
     {l:'Outcomes',tip:''},
     {l:'Action',tip:''},
   ];
-  const campTable=campaigns.length===0?`<p style="color:var(--g400);font-style:italic">No evaluated campaigns yet.</p>`:`
+  const campTable=filteredCampaigns.length===0?`<p style="color:var(--g400);font-style:italic">No evaluated campaigns yet.</p>`:`
   <div style="overflow-x:auto">
   <table style="width:100%;border-collapse:collapse;font-size:.82rem">
     <thead><tr style="background:var(--g100);text-align:left">
       ${HEADERS.map(h=>`<th style="padding:.5rem .75rem;font-weight:600;color:var(--g800);border-bottom:2px solid var(--g200);white-space:nowrap${h.tip?';cursor:help':''}" ${h.tip?`title="${h.tip}"`:''}>${h.l}</th>`).join('')}
     </tr></thead>
     <tbody>
-    ${campaigns.map((c,i)=>{
+    ${filteredCampaigns.map((c,i)=>{
       const isLoading=!!_evalLoadingMap[c.nba_run_id];
       const rowErr=(S.evalEvalError||{})[c.nba_run_id];
       const reEvalBtn=isLoading
@@ -2024,7 +2043,13 @@ function renderEval(){
     ${simPanel}
     ${strip}
     <div style="background:var(--white);border:1px solid var(--g200);border-radius:.5rem;padding:1.25rem;margin-bottom:1rem">
-      <h3 style="font-size:.95rem;font-weight:600;color:var(--g900);margin:0 0 1rem">Campaign Performance</h3>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
+        <h3 style="font-size:.95rem;font-weight:600;color:var(--g900);margin:0">Campaign Performance</h3>
+        ${_evalPlans.length>1?`<select onchange="S.evalPlanFilter=this.value;renderEval()" style="font-size:.8rem;padding:.3rem .65rem;border:1px solid var(--g200);border-radius:.35rem;background:var(--white);color:var(--g800);font-weight:600;cursor:pointer">
+          ${_evalPlans.map(pl=>`<option value="${pl.key}" ${pl.key===S.evalPlanFilter?'selected':''}>${pl.name} — ${pl.stars}★</option>`).join('')}
+          <option value="" ${!S.evalPlanFilter?'selected':''}>All Plans</option>
+        </select>`:''}
+      </div>
       ${campTable}
     </div>
     <div style="margin-top:1rem">${duePanel}</div>
@@ -2331,12 +2356,20 @@ function renderConvSection(){
     (S.convData[c.nba_run_id]||[]).forEach(conv=>allConvs.push({...conv}));
   });
 
-  const runIds=[...new Set(campaigns.map(c=>c.nba_run_id))];
-  const selRun=S.convSelectedRunId||runIds[runIds.length-1]||'';
+  // Runs sorted latest first (run_id encodes YYYYMMDD_HHMMSS)
+  const runIds=[...new Set(campaigns.map(c=>c.nba_run_id))].sort((a,b)=>b.localeCompare(a));
+  // Default to most-recent run; reset if stored run no longer exists
+  if(S.convSelectedRunId&&!runIds.includes(S.convSelectedRunId))S.convSelectedRunId='';
+  const selRun=S.convSelectedRunId||runIds[0]||'';
   const visConvs=selRun?(S.convData[selRun]||[]):allConvs;
 
+  // Sort conversations: outreach date descending (latest first), then by state priority
   const stateOrder=['ESCALATED','FOLLOW_UP_SENT','AWAITING_DATE','DATE_CONFIRMED','OUTREACH_SENT','EMAIL_SENT','COMPLETED','DECLINED'];
-  const sorted=[...visConvs].sort((a,b)=>stateOrder.indexOf(a.conversation_state)-stateOrder.indexOf(b.conversation_state));
+  const sorted=[...visConvs].sort((a,b)=>{
+    const dt=new Date(b.outreach_sent_at||b.created_timestamp||0)-new Date(a.outreach_sent_at||a.created_timestamp||0);
+    if(dt!==0)return dt;
+    return stateOrder.indexOf(a.conversation_state)-stateOrder.indexOf(b.conversation_state);
+  });
 
   const summary={
     total:sorted.length,
@@ -2413,7 +2446,7 @@ function renderConvSection(){
           ${summary.escalated?`<span style="font-size:.78rem;color:var(--red);font-weight:600">${summary.escalated} escalated</span>`:''}
         `:''}
         ${runIds.length>1?`<select onchange="S.convSelectedRunId=this.value;renderEval()" style="font-size:.78rem;padding:.25rem .5rem;border:1px solid var(--g200);border-radius:.25rem">
-          ${runIds.map(r=>`<option value="${r}" ${r===selRun?'selected':''}>${r}</option>`).join('')}
+          ${runIds.map(r=>{const cm=campaigns.find(c=>c.nba_run_id===r);const lbl=cm?`${cm.plan_name||r} — ${cm.measure_code||''} (${r.slice(-6)})`:r;return`<option value="${r}" ${r===selRun?'selected':''}>${lbl}</option>`;}).join('')}
         </select>`:''}
         <button class="btn-send" style="font-size:.75rem;padding:.25rem .6rem" onclick="${runIds.map(r=>`loadConversations('${r}')`).join(';')}">↺ Refresh</button>
         <span style="font-size:.72rem;color:var(--g400);font-style:italic">Auto-refreshes every 30s</span>
@@ -2804,7 +2837,7 @@ function renderOpp(){
           ${o.ai_analysis
             ?`<strong style="font-size:.88rem;color:${t12net>=0?'#16a34a':'var(--red)'}">${_fmtN(t12net)} <span style="font-size:.67rem;font-weight:400;color:var(--g500)">net</span></strong>`
             :`<span style="font-size:.75rem;color:var(--g400)">—</span>`}
-          <button onclick="event.stopPropagation();launchCampaign('${o.measure_key}','${sel.key}')" style="padding:.28rem .8rem;background:var(--teal);color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap">Launch →</button>
+          ${(()=>{const _lk=S.launchedOpps||new Set();const _il=_lk.has(o.measure_key+'_'+sel.key)||_lk.has(o.measure_code+'_'+sel.key);return _il?`<button onclick="event.stopPropagation();S.tab='eval';render()" style="padding:.28rem .8rem;background:#e0f2fe;color:#0284c7;border:1px solid #7dd3fc;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap">📊 In Evaluation</button>`:`<button onclick="event.stopPropagation();launchCampaign('${o.measure_key}','${sel.key}')" style="padding:.28rem .8rem;background:var(--teal);color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap">Launch →</button>`;})()}
           <span style="color:var(--g400);font-size:.75rem;flex-shrink:0">▾</span>
         </div>
       </summary>
@@ -3027,9 +3060,7 @@ function renderOpp(){
             </button>`}
       </div>`}
 
-      <button class="launch-btn" onclick="launchCampaign('${o.measure_key}','${sel.key}')">
-        Launch This Campaign — ${o.measure_name} → ${sel.name.replace('Aurora ','')} &nbsp;→
-      </button>
+      ${(()=>{const _lk=S.launchedOpps||new Set();const _il=_lk.has(o.measure_key+'_'+sel.key)||_lk.has(o.measure_code+'_'+sel.key);return _il?`<button class="launch-btn" onclick="S.tab='eval';render()" style="background:#0284c7;border-color:#0284c7">📊 Already in Evaluation — ${o.measure_name} → ${sel.name.replace('Aurora ','')} &nbsp;→</button>`:`<button class="launch-btn" onclick="launchCampaign('${o.measure_key}','${sel.key}')">Launch This Campaign — ${o.measure_name} → ${sel.name.replace('Aurora ','')} &nbsp;→</button>`;})()}
     </details>`;
   }).join('')}
 
