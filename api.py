@@ -1603,8 +1603,7 @@ def get_gaps():
 def get_gaps_by_measure_plan(measure_key: str, plan_key: str):
     """Return up to 250 open/borderline gaps for a measure×plan, joined with member + channel data."""
     src = active_source_id
-    src_gap  = "(g.source_id = 'demo' OR g.source_id IS NULL)" if src == "demo" else f"g.source_id = '{src}'"
-    src_mem  = "(mb.source_id = 'demo' OR mb.source_id IS NULL)" if src == "demo" else f"mb.source_id = '{src}'"
+    src_gap = "(g.source_id = 'demo' OR g.source_id IS NULL)" if src == "demo" else f"g.source_id = '{src}'"
     with get_db() as conn:
         rows = conn.execute(f"""
             SELECT g.*,
@@ -1613,15 +1612,15 @@ def get_gaps_by_measure_plan(measure_key: str, plan_key: str):
                    cp.email_allowed, cp.sms_allowed, cp.call_allowed,
                    cp.preferred_channel, cp.do_not_contact_flag
             FROM fact_member_gap g
-            JOIN dim_member mb ON mb.member_key = g.member_key
+            LEFT JOIN dim_member mb ON mb.member_key = g.member_key
             LEFT JOIN dim_member_channel_pref cp ON cp.member_key = g.member_key
             WHERE g.measure_key = ?
               AND g.plan_key = ?
-              AND LOWER(g.gap_status) IN ('open', 'borderline')
+              AND LOWER(g.gap_status) IN ('open', 'borderline', 'partial')
               AND LOWER(g.is_suppressed) != 'true'
-              AND {src_gap} AND {src_mem}
+              AND {src_gap}
             ORDER BY g.nba_propensity_score DESC
-            LIMIT 250
+            LIMIT 2000
         """, (measure_key, plan_key)).fetchall()
     return rows_as_dicts(rows)
 
@@ -2342,18 +2341,10 @@ def send_all(run_id: str):
     # under concurrent SQLite write pressure during rapid send_all loops
     _backfill_conversations(run_id)
 
-    # Close all successfully SENT gaps so opportunities disappear from the board
+    # Mark outreach as COMPLETED (gap_status NOT auto-closed here — gaps only close
+    # when a member explicitly responds, so evaluation reflects real closure counts)
     if sent > 0:
         with get_db() as conn:
-            conn.execute(
-                """UPDATE fact_member_gap
-                   SET gap_status = 'Closed'
-                   WHERE member_gap_key IN (
-                       SELECT member_gap_key FROM fact_nba_outreach_plan
-                       WHERE nba_run_id = ? AND status = 'SENT' AND member_gap_key IS NOT NULL
-                   )""",
-                (run_id,)
-            )
             conn.execute(
                 """UPDATE fact_nba_outreach_plan SET status = 'COMPLETED'
                    WHERE nba_run_id = ? AND status = 'SENT'""",

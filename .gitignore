@@ -46,6 +46,10 @@ env/
 # Output files
 output/*.*
 
+# Generated test data (run generate_test_data_*.py to recreate)
+test_data_*.xlsx
+careintel_demo_data.xlsx
+
 # Database (seeded at startup on Render)
 careintel.db
 careintel.db-shm

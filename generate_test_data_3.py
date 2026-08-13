@@ -1,18 +1,17 @@
-"""Generate test_data_2.xlsx — 6 new plans, ~130 members, ~500 care gaps."""
-import openpyxl
-from openpyxl import Workbook
+"""Generate test_data_3.xlsx — 6 plans, ~142 members, ~559 gaps. call_allowed guaranteed."""
 import random
 from datetime import date, timedelta
+from openpyxl import Workbook
 
-random.seed(42)
+random.seed(99)
 
 PLANS = [
-    ("P201", "Devoted Health Medicare Advantage", "Southwest",   "MAPD", 2.0, 3.5, 120_000_000, 11_000),
-    ("P202", "Clover Health Complete Care",        "Mid-Atlantic","MAPD", 2.5, 4.0, 185_000_000, 17_000),
-    ("P203", "Oscar Health Medicare",              "Southeast",   "MAPD", 3.0, 4.0,  95_000_000,  8_800),
-    ("P204", "SCAN Health Plan Classic",           "West",        "MAPD", 3.5, 4.5, 255_000_000, 23_500),
-    ("P205", "Independence Blue Cross PPO",        "Northeast",   "MAPD", 3.0, 4.0, 325_000_000, 30_000),
-    ("P206", "UPMC for Life Complete",             "Mid-Atlantic","MAPD", 2.5, 3.5, 280_000_000, 26_000),
+    ("P301", "Bright Health Medicare",              "Southeast",   "MAPD", 2.5, 4.0,  90_000_000,  8_300),
+    ("P302", "Molina Healthcare Dual Plus",         "Southwest",   "MAPD", 3.0, 4.0, 195_000_000, 18_000),
+    ("P303", "Zing Health Medicare Advantage",      "Midwest",     "MAPD", 2.0, 3.5,  55_000_000,  5_100),
+    ("P304", "Alignment Health Plan",               "West",        "MAPD", 3.5, 4.5, 140_000_000, 12_900),
+    ("P305", "Friday Health Plans Medicare",        "South",       "MAPD", 2.5, 3.5,  75_000_000,  6_900),
+    ("P306", "Innovage PACE",                       "Northeast",   "PACE", 3.0, 4.0,  48_000_000,  4_400),
 ]
 
 MEASURES = ["BCS", "COL", "EED", "CBP", "MAD"]
@@ -38,25 +37,22 @@ LITERACY  = ["High"]*40 + ["Medium"]*40 + ["Low"]*20
 def rand_dob():
     start = date(1940, 1, 1)
     end   = date(1965, 12, 31)
-    return start + timedelta(days=random.randint(0, (end-start).days))
+    return start + timedelta(days=random.randint(0, (end - start).days))
 
-def rand_bool(p=0.7):
-    return 1 if random.random() < p else 0
-
-# ── Build members ─────────────────────────────────────────────────────────────
+# ── Members ───────────────────────────────────────────────────────────────────
 members = []
-mid = 2001
+mid = 3001
 for plan in PLANS:
-    count = random.randint(18, 25)
+    count = random.randint(21, 26)
     for _ in range(count):
-        lang   = random.choice(LANGUAGES)
-        lit    = random.choice(LITERACY)
-        email  = rand_bool(0.55)
-        sms    = rand_bool(0.45) if lang == "English" else rand_bool(0.25)
-        call   = rand_bool(0.80)
+        lang = random.choice(LANGUAGES)
+        lit  = random.choice(LITERACY)
+        email = 1 if random.random() < 0.55 else 0
+        sms   = 1 if (random.random() < 0.45 if lang == "English" else random.random() < 0.25) else 0
+        call  = 1  # guaranteed — no suppression in test_data_3
         if email:   pref = "Email"
         elif sms:   pref = "SMS"
-        else:       pref = "Mail"
+        else:       pref = "Phone"
         members.append({
             "member_id":        f"M{mid}",
             "plan_id":          plan[0],
@@ -75,12 +71,10 @@ for plan in PLANS:
 
 print(f"Members: {len(members)}")
 
-# ── Build gaps ────────────────────────────────────────────────────────────────
-# Assign 3-5 measures per member, targeting ~500 total rows
+# ── Gaps ──────────────────────────────────────────────────────────────────────
 gaps = []
 for m in members:
     plan_star = next(p[4] for p in PLANS if p[0] == m["plan_id"])
-    # Lower-star plans → more open gaps
     open_prob = 0.75 if plan_star < 3.0 else (0.60 if plan_star < 3.5 else 0.45)
 
     num_measures = random.randint(3, 5)
@@ -88,16 +82,15 @@ for m in members:
     for mcode in chosen:
         roll = random.random()
         if roll < open_prob:
-            status = "open"
+            status   = "open"
             days_open = random.randint(30, 400)
         elif roll < open_prob + 0.10:
-            status = "borderline"
+            status   = "borderline"
             days_open = random.randint(10, 90)
         else:
-            status = "closed"
+            status   = "closed"
             days_open = 0
 
-        # Propensity: correlated with digital literacy and days_open
         base = {"High": 0.65, "Medium": 0.50, "Low": 0.35}[m["digital_literacy"]]
         prop = round(min(0.95, max(0.05, base + random.gauss(0, 0.15))), 2)
 
@@ -115,14 +108,12 @@ print(f"Gaps: {len(gaps)}")
 # ── Write workbook ────────────────────────────────────────────────────────────
 wb = Workbook()
 
-# Sheet 1 — Plan Configuration
 ws1 = wb.active
 ws1.title = "Plan Configuration"
 ws1.append(["plan_id","plan_name","region","segment","current_star_rating","target_star_rating","annual_revenue","total_members"])
 for p in PLANS:
     ws1.append(list(p))
 
-# Sheet 2 — Member Roster
 ws2 = wb.create_sheet("Member Roster")
 cols2 = ["member_id","plan_id","first_name","last_name","date_of_birth","gender",
          "language","digital_literacy","email_allowed","sms_allowed","call_allowed","preferred_channel"]
@@ -130,14 +121,13 @@ ws2.append(cols2)
 for m in members:
     ws2.append([m[c] for c in cols2])
 
-# Sheet 3 — Care Gap File
 ws3 = wb.create_sheet("Care Gap File")
 cols3 = ["member_id","plan_id","measure_code","gap_status","nba_propensity_score","days_open"]
 ws3.append(cols3)
 for g in gaps:
     ws3.append([g[c] for c in cols3])
 
-out = r"C:\Users\vmuser\Documents\NBA_Claude_Cli\test_data_2.xlsx"
+out = r"C:\Users\vmuser\Documents\NBA_Claude_Cli\test_data_3.xlsx"
 wb.save(out)
 print(f"Saved: {out}")
 print(f"Plans: {len(PLANS)}, Members: {len(members)}, Gaps: {len(gaps)}")

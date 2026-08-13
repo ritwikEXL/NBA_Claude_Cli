@@ -971,8 +971,8 @@ async function confirmOpp(){
 }
 
 function confirmCohorts(sel){
-  if(sel==='both')S.selCohorts=[...S.cohorts];
-  else if(sel==='c2')S.selCohorts=[S.cohorts[1]].filter(Boolean);
+  if(sel==='all')S.selCohorts=[...S.cohorts];
+  else if(sel==='c1c2')S.selCohorts=S.cohorts.slice(0,2).filter(Boolean);
   else S.selCohorts=[S.cohorts[0]].filter(Boolean);
   S.cohortSelPending=null;
   S.campOptions=generateCampaignOptions();
@@ -994,7 +994,7 @@ function confirmCampaign(){
   // Apply manual edits to campaign fields
   const e=S.campEdits;
   if(Object.keys(e).length>0){
-    const fieldLabels={primaryCh:'Primary Channel',fallbackCh:'Fallback Channel',c1Inc:'C1 Incentive',c2Inc:'C2 Incentive',freqPlan:'Frequency Plan',theme:'Message Theme'};
+    const fieldLabels={primaryCh:'Primary Channel',fallbackCh:'Fallback Channel',c1Inc:'T1 Incentive',c2Inc:'T2 Incentive',freqPlan:'Frequency Plan',theme:'Message Theme'};
     const overrideNotes=Object.entries(e).map(([f,v])=>`${fieldLabels[f]||f} overridden to "${v}"`).join('; ');
     // Write override trace row before campaign created
     S.traceRows.push({nba_run_id:S.runId,timestamp:nowIso(),agent:'Campaign',step:'MANUAL_OVERRIDE',
@@ -1002,13 +1002,13 @@ function confirmCampaign(){
       output_summary:`manually overridden by user — ${overrideNotes}`,
       affected_population_count:S.selCohorts.reduce((s,c)=>s+c.gaps.length,0)});
     // Patch campaign object with edits
-    if(e.c1Inc)S.campaign={...S.campaign,c1Inc:e.c1Inc,incSum:S.campaign.incSum.replace(/C1:[^;]+/,`C1:${incLabel(e.c1Inc)}`)};
-    if(e.c2Inc)S.campaign={...S.campaign,c2Inc:e.c2Inc,incSum:S.campaign.incSum.replace(/C2:[^;]+/,`C2:${incLabel(e.c2Inc)}`)};
+    if(e.c1Inc)S.campaign={...S.campaign,c1Inc:e.c1Inc,incSum:S.campaign.incSum.replace(/T1:[^;]+/,`T1:${incLabel(e.c1Inc)}`)};
+    if(e.c2Inc)S.campaign={...S.campaign,c2Inc:e.c2Inc,incSum:S.campaign.incSum.replace(/T2:[^;]+/,`T2:${incLabel(e.c2Inc)}`)};
     if(e.freqPlan)S.campaign={...S.campaign,freqSum:e.freqPlan};
     if(e.primaryCh||e.fallbackCh){
       const pch=e.primaryCh||S.campaign.c1Ch.split(' ')[0];
       const fbch=e.fallbackCh||'';
-      S.campaign={...S.campaign,channelSum:`C1:${pch}${fbch?'+'+fbch:''} (edited); C2:${S.campaign.c2Ch||'—'}`};
+      S.campaign={...S.campaign,channelSum:`T1:${pch}${fbch?'+'+fbch:''} (edited)${S.campaign.c2Ch&&S.campaign.c2Ch!=='—'?`; T2:${S.campaign.c2Ch}`:''}${S.campaign.c3Ch&&S.campaign.c3Ch!=='—'?`; T3:${S.campaign.c3Ch}`:''}` };
     }
   }
   S.agentSt.camp='done';S.agentSum.camp=S.campaign.name+(Object.keys(e).length?` (${Object.keys(e).length} fields customised)`:'');
@@ -1438,19 +1438,25 @@ function buildOutputs(){
       const lang=mem.language_preference||'EN';
       const tpl=tmpl(mCode,lang);
       const inc=cohort.incentive;
-      let ch1;
+      // Channel & timing by tier
+      let ch1,contactDay;
       if(cohort.id==='C1_DIGITAL_HIGH_PROP'){
         ch1=chan.email_allowed==='true'?'EMAIL':chan.sms_allowed==='true'?'SMS':'CALL';
-      }else{
+        contactDay=1;
+      }else if(cohort.id==='C2_MID_PROPENSITY'){
+        ch1=chan.sms_allowed==='true'?'SMS':chan.email_allowed==='true'?'EMAIL':'CALL';
+        contactDay=3;
+      }else{// C3 high-touch
         const pref=chan.preferred_channel||'';
         ch1=pref==='CALL'&&chan.call_allowed==='true'?'CALL':
             chan.sms_allowed==='true'?'SMS':chan.email_allowed==='true'?'EMAIL':'CALL';
+        contactDay=10;
       }
-      const contactDay=cohort.id==='C1_DIGITAL_HIGH_PROP'?1:10;
       oRows.push({nba_run_id:S.runId,contact_id:`CT_${ctr}_${String(cn++).padStart(3,'0')}`,
         member_gap_key:gap.member_gap_key,campaign_id:S.campaignId,channel:ch1,
         planned_datetime:addDays(today,contactDay)+'T09:00:00',message_template_id:tpl,
         incentive_offered:inc,status:'PLANNED',created_timestamp:today});
+      // Follow-up touches
       if(cohort.id==='C1_DIGITAL_HIGH_PROP'){
         const ch2=S.campaign.id==='OPT1'?
           (chan.sms_allowed==='true'&&ch1!=='SMS'?'SMS':null):
@@ -1459,18 +1465,23 @@ function buildOutputs(){
           member_gap_key:gap.member_gap_key,campaign_id:S.campaignId,channel:ch2,
           planned_datetime:addDays(today,S.campaign.id==='OPT1'?7:14)+'T09:00:00',
           message_template_id:tpl,incentive_offered:inc,status:'PLANNED',created_timestamp:today});
-      }else if(S.campaign.id==='OPT2'&&chan.sms_allowed==='true'&&ch1!=='SMS'){
-        oRows.push({nba_run_id:S.runId,contact_id:`CT_${ctr}_${String(cn++).padStart(3,'0')}`,
-          member_gap_key:gap.member_gap_key,campaign_id:S.campaignId,channel:'SMS',
-          planned_datetime:addDays(today,14)+'T09:00:00',
+      }else if(S.campaign.id==='OPT2'){
+        // OPT2: second touch for T2 (call d10) and T3 (SMS d14)
+        const ch2=cohort.id==='C2_MID_PROPENSITY'?
+          (chan.call_allowed==='true'?'CALL':(chan.sms_allowed==='true'&&ch1!=='SMS'?'SMS':null)):
+          (chan.sms_allowed==='true'&&ch1!=='SMS'?'SMS':null);
+        if(ch2)oRows.push({nba_run_id:S.runId,contact_id:`CT_${ctr}_${String(cn++).padStart(3,'0')}`,
+          member_gap_key:gap.member_gap_key,campaign_id:S.campaignId,channel:ch2,
+          planned_datetime:addDays(today,cohort.id==='C2_MID_PROPENSITY'?10:14)+'T09:00:00',
           message_template_id:tpl,incentive_offered:inc,status:'PLANNED',created_timestamp:today});
       }
       const normD=maxD===minD?0.5:((+(gap.days_open)||0)-minD)/(maxD-minD);
       const sw=gap.gap_status==='Open'?1.0:gap.gap_status==='Partial'?0.6:0.3;
       const ps=Math.round(100*(0.4*normD+0.4*(+(gap.nba_propensity_score)||0)+0.2*sw));
       const prop=+(gap.nba_propensity_score)||0;
-      const lift=Math.max(0.10,Math.min(0.30,
-        (cohort.id==='C1_DIGITAL_HIGH_PROP'?0.22:0.15)+(prop-0.5)*0.1+(gap.gap_status==='Borderline'?0.04:0)));
+      const liftBase=cohort.id==='C1_DIGITAL_HIGH_PROP'?0.22:cohort.id==='C2_MID_PROPENSITY'?0.15:0.08;
+      const lift=Math.max(0.05,Math.min(0.30,
+        liftBase+(prop-0.5)*0.1+(gap.gap_status==='Borderline'?0.04:0)));
       const codes=[];
       if(prop>=0.70)codes.push('HIGH_PROP');else codes.push('MED_PROP');
       if(mem.digital_literacy_segment==='High')codes.push('DIGITAL_OK');
@@ -1517,32 +1528,42 @@ function buildExpl(gap,mem,lang,ch,inc,cohort){
 
 /* ── Cohort & Campaign Generators ──────────────────────────────────── */
 function generateCohorts(gaps,mCode){
-  const c1=[],c2=[];
+  // Thresholds aligned with Opportunity page: T1 propensity>0.70, T2 0.45-0.70, T3 <0.45
+  const c1=[],c2=[],c3=[];
   for(const g of gaps){
     const m=S.memberMap[g.member_key]||{};
     const c=S.chanMap[g.member_key]||{};
     if(c.do_not_contact_flag==='true')continue;
-    const ok=m.digital_literacy_segment==='High'&&m.language_preference==='EN'&&
-              (+(g.nba_propensity_score)||0)>=0.60&&c.email_allowed==='true';
-    if(ok)c1.push(g);else c2.push(g);
+    const prop=(+(g.nba_propensity_score)||0);
+    if(prop>=0.70)c1.push(g);
+    else if(prop>=0.45)c2.push(g);
+    else c3.push(g);
   }
   const cohorts=[];
   if(c1.length){
     const inc=mCode==='COL'?'FIT_KIT_MAILER':mCode==='BCS'?'GIFTCARD_25':'GIFTCARD_15';
     const avg=c1.reduce((s,g)=>s+(+(g.nba_propensity_score)||0),0)/c1.length;
-    cohorts.push({id:'C1_DIGITAL_HIGH_PROP',name:'Digital-first, high propensity',
-      rule:'English · high digital literacy · propensity ≥ 0.60 · email allowed',
+    cohorts.push({id:'C1_DIGITAL_HIGH_PROP',name:'Tier 1 — High propensity',
+      rule:'Propensity ≥ 0.70 · digital-first (Email + SMS) · no incentive needed',
       gaps:c1,members:c1.map(g=>S.memberMap[g.member_key]).filter(Boolean),
       priority:1,channelFit:'Email + SMS',avgProp:Math.round(avg*100)/100,incentive:inc});
   }
   if(c2.length){
-    const low=c2.some(g=>(S.memberMap[g.member_key]||{}).socioeconomic_segment==='Low');
-    const inc=low?'TRANSPORT_VOUCHER':'GIFTCARD_25';
+    const inc='GIFTCARD_25';
     const avg=c2.reduce((s,g)=>s+(+(g.nba_propensity_score)||0),0)/c2.length;
-    cohorts.push({id:'C2_ACCESS_BARRIER',name:'Access-barrier, high-touch',
-      rule:'Non-English OR low digital literacy OR channel-limited',
+    cohorts.push({id:'C2_MID_PROPENSITY',name:'Tier 2 — Mid propensity',
+      rule:'Propensity 0.45–0.70 · SMS + modest incentive',
       gaps:c2,members:c2.map(g=>S.memberMap[g.member_key]).filter(Boolean),
-      priority:2,channelFit:'Call / SMS (language-matched)',avgProp:Math.round(avg*100)/100,incentive:inc});
+      priority:2,channelFit:'SMS + incentive',avgProp:Math.round(avg*100)/100,incentive:inc});
+  }
+  if(c3.length){
+    const low=c3.some(g=>(S.memberMap[g.member_key]||{}).socioeconomic_segment==='Low');
+    const inc=low?'TRANSPORT_VOUCHER':'GIFTCARD_25';
+    const avg=c3.reduce((s,g)=>s+(+(g.nba_propensity_score)||0),0)/c3.length;
+    cohorts.push({id:'C3_ACCESS_BARRIER',name:'Tier 3 — High-touch / access-barrier',
+      rule:'Propensity < 0.45 · call + voucher · non-English or low digital literacy',
+      gaps:c3,members:c3.map(g=>S.memberMap[g.member_key]).filter(Boolean),
+      priority:3,channelFit:'Call + voucher',avgProp:Math.round(avg*100)/100,incentive:inc});
   }
   return cohorts;
 }
@@ -1550,31 +1571,41 @@ function generateCohorts(gaps,mCode){
 function generateCampaignOptions(){
   const mCode=S.selOpp.measure.measure_code;
   const c1=S.selCohorts.find(c=>c.id==='C1_DIGITAL_HIGH_PROP');
-  const c2=S.selCohorts.find(c=>c.id==='C2_ACCESS_BARRIER');
-  const langs=[...new Set((c2?.members||[]).map(m=>m.language_preference))].filter(l=>l&&l!=='EN');
-  const c2ChDesc=langs.includes('ZH')?'Mandarin SMS/call':langs.includes('ES')?'Spanish bilingual call':'Call (preferred channel)';
+  const c2=S.selCohorts.find(c=>c.id==='C2_MID_PROPENSITY');
+  const c3=S.selCohorts.find(c=>c.id==='C3_ACCESS_BARRIER');
+  const highTouchCohort=c3||c2;
+  const langs=[...new Set((highTouchCohort?.members||[]).map(m=>m.language_preference))].filter(l=>l&&l!=='EN');
+  const htChDesc=langs.includes('ZH')?'Mandarin SMS/call':langs.includes('ES')?'Spanish bilingual call':'Call (preferred channel)';
   const c1inc=c1?.incentive||'GIFTCARD_15';
   const c2inc=c2?.incentive||'GIFTCARD_25';
+  const c3inc=c3?.incentive||'TRANSPORT_VOUCHER';
+  const hasMid=!!c2,hasHigh=!!c3;
+  const channelParts=[c1?'T1:Email+SMS':null,hasMid?'T2:SMS+incentive':null,hasHigh?`T3:${htChDesc}`:null].filter(Boolean);
+  const incParts=[c1?`T1:${incLabel(c1inc)}`:null,hasMid?`T2:${incLabel(c2inc)}`:null,hasHigh?`T3:${incLabel(c3inc)}`:null].filter(Boolean);
   return[
     {id:'OPT1',name:'Lean Digital + Targeted High-Touch',
-      desc:'Cost-efficient: email/SMS for C1, single language-appropriate touch for C2.',
-      c1Ch:c1?`Email d1 → SMS d7 → stop on close`:'—',
-      c2Ch:c2?`${c2ChDesc} d10 → stop on close`:'—',
-      c1Inc:c1inc,c2Inc:c2inc,c1Freq:'Max 2 touches / 14 days',c2Freq:'1 touch / 10 days',
+      desc:`Cost-efficient: Email/SMS for T1${hasMid?', SMS+incentive for T2':''}${hasHigh?', single high-touch for T3':''}. Stops on close.`,
+      c1Ch:c1?'Email d1 → SMS d7 → stop on close':'—',
+      c2Ch:hasMid?'SMS d1 → stop on close':'—',
+      c3Ch:hasHigh?`${htChDesc} d10 → stop on close`:'—',
+      c1Inc:c1inc,c2Inc:c2inc,c3Inc:c3inc,
+      c1Freq:'Max 2 touches / 14 days',c2Freq:'1 touch / 7 days',c3Freq:'1 touch / 10 days',
       tradeoff:'Respects all channel consents · lowest cost · proven for digital members',
       recommended:true,
-      channelSum:`C1:Email+SMS; C2:${c2ChDesc}`,freqSum:'C1:2/14d; C2:1/10d',
-      incSum:`C1:${incLabel(c1inc)}; C2:${incLabel(c2inc)}`},
-    {id:'OPT2',name:'Full High-Touch — Both Cohorts',
-      desc:'Adds call follow-up d14 for C1; upgrades C2 to 2 touches. Higher reach, higher cost.',
+      channelSum:channelParts.join('; '),freqSum:'T1:2/14d; T2:1/7d; T3:1/10d',
+      incSum:incParts.join('; ')},
+    {id:'OPT2',name:'Full High-Touch — All Selected Tiers',
+      desc:`Adds call follow-up for T1; upgrades all tiers to 2+ touches. Higher reach, higher cost.`,
       c1Ch:c1?'Email d1 → SMS d7 → call d14':'—',
-      c2Ch:c2?`${c2ChDesc} d10 → SMS d14`:'—',
-      c1Inc:'GIFTCARD_25',c2Inc:'GIFTCARD_25',
-      c1Freq:'Max 3 touches / 21 days',c2Freq:'2 touches / 14 days',
-      tradeoff:'⚠ Higher cost · check call opt-outs for C1 · better for low-propensity segments',
+      c2Ch:hasMid?'SMS d1 → call d10':'—',
+      c3Ch:hasHigh?`${htChDesc} d7 → SMS d14`:'—',
+      c1Inc:'GIFTCARD_25',c2Inc:'GIFTCARD_25',c3Inc:c3inc,
+      c1Freq:'Max 3 touches / 21 days',c2Freq:'2 touches / 14 days',c3Freq:'2 touches / 14 days',
+      tradeoff:'⚠ Higher cost · better for low-propensity segments · check call opt-outs for T1',
       recommended:false,
-      channelSum:`C1:Email+SMS+Call; C2:${c2ChDesc}+SMS`,freqSum:'C1:3/21d; C2:2/14d',
-      incSum:'Both cohorts: $25 Gift Card'},
+      channelSum:[c1?'T1:Email+SMS+Call':null,hasMid?'T2:SMS+Call':null,hasHigh?`T3:${htChDesc}+SMS`:null].filter(Boolean).join('; '),
+      freqSum:'T1:3/21d; T2:2/14d; T3:2/14d',
+      incSum:[c1?`T1:${incLabel('GIFTCARD_25')}`:null,hasMid?`T2:${incLabel('GIFTCARD_25')}`:null,hasHigh?`T3:${incLabel(c3inc)}`:null].filter(Boolean).join('; ')},
   ];
 }
 
@@ -3327,15 +3358,17 @@ function renderS1(){
 }
 
 function renderS2(){
-  const sel=S.cohortSelPending;// 'both'|'c1'|'c2'|null
+  const sel=S.cohortSelPending;// 'c1'|'c1c2'|'all'|null
+  const selIdx=sel==='all'?[0,1,2]:sel==='c1c2'?[0,1]:sel==='c1'?[0]:[];
   const cards=S.cohorts.map((c,i)=>{
-    const isSel=sel==='both'||(sel==='c1'&&i===0)||(sel==='c2'&&i===1);
+    const isSel=selIdx.includes(i);
     const isUn=sel!==null&&!isSel;
     const selCls=isSel?'coh-selected':isUn?'coh-unselected':'';
+    const cardCls=['c1','c2','c2'][i]||'c2';
     const chParts=c.channelFit.split(/[+/,]/).map(s=>s.trim()).filter(Boolean);
     const chChips=chParts.map(ch=>`<span class="cc-key-chip ch-chip">${ch}</span>`).join('');
     const propPct=Math.round(c.avgProp*100);
-    return`<div class="cohort-card ${i===0?'c1':'c2'} ${selCls}">
+    return`<div class="cohort-card ${cardCls} ${selCls}">
       ${isSel?`<div class="coh-sel-badge">✓ Selected</div>`:''}
       <div class="cohort-count-badge">${c.gaps.length}</div>
       <div class="cohort-count-label">member${c.gaps.length!==1?'s':''} targeted</div>
@@ -3348,13 +3381,15 @@ function renderS2(){
     </div>`;
   }).join('');
   const confirmBtn=sel?`<button class="btn btn-primary" data-action="confirm-cohorts" data-val="${sel}">Confirm Selection →</button>`:'';
+  const n=S.cohorts.length;
   return`<div class="step-content">
     <div style="font-size:.72rem;color:var(--g600);margin-bottom:.2rem">Choose which cohorts to target:</div>
-    <div class="cohort-grid">${cards}</div>
+    <div style="font-size:.69rem;color:var(--g400);margin-bottom:.5rem">Showing top ${S.inScopeGaps.length.toLocaleString()} open gaps · split by propensity tier (same as Opportunity page)</div>
+    <div class="cohort-grid" style="grid-template-columns:${n>=3?'1fr 1fr 1fr':'1fr 1fr'}">${cards}</div>
     <div class="btn-row">
-      ${S.cohorts.length>=2?`<button class="btn btn-secondary" data-action="sel-cohorts" data-val="both">Both Cohorts</button>`:''}
-      <button class="btn btn-secondary" data-action="sel-cohorts" data-val="c1">Cohort 1 Only</button>
-      ${S.cohorts.length>=2?`<button class="btn btn-secondary" data-action="sel-cohorts" data-val="c2">Cohort 2 Only</button>`:''}
+      <button class="btn btn-secondary" data-action="sel-cohorts" data-val="c1">T1 Only</button>
+      ${n>=2?`<button class="btn btn-secondary" data-action="sel-cohorts" data-val="c1c2">T1 + T2</button>`:''}
+      ${n>=3?`<button class="btn btn-secondary" data-action="sel-cohorts" data-val="all">All Tiers (T1+T2+T3)</button>`:''}
     </div>
     ${confirmBtn?`<div class="btn-row"><button class="btn-back" data-action="go-back" data-val="1">← Back to Opportunity</button>${confirmBtn}</div>`:'<div class="btn-row"><button class="btn-back" data-action="go-back" data-val="1">← Back to Opportunity</button></div>'}
   </div>`;
@@ -3367,10 +3402,12 @@ function renderS3(){
       ${o.recommended?'<div class="rec-badge">Recommended</div>':''}
       <div class="cc-name">${o.name}</div>
       <div class="cc-desc">${o.desc}</div>
-      <div class="cc-row"><span class="k">C1</span><span class="v">${o.c1Ch}</span></div>
-      <div class="cc-row"><span class="k">C2</span><span class="v">${o.c2Ch}</span></div>
-      <div class="cc-row"><span class="k">C1 incent.</span><span class="v">${incLabel(o.c1Inc)}</span></div>
-      <div class="cc-row"><span class="k">C2 incent.</span><span class="v">${incLabel(o.c2Inc)}</span></div>
+      ${o.c1Ch&&o.c1Ch!=='—'?`<div class="cc-row"><span class="k">T1 channel</span><span class="v">${o.c1Ch}</span></div>`:''}
+      ${o.c2Ch&&o.c2Ch!=='—'?`<div class="cc-row"><span class="k">T2 channel</span><span class="v">${o.c2Ch}</span></div>`:''}
+      ${o.c3Ch&&o.c3Ch!=='—'?`<div class="cc-row"><span class="k">T3 channel</span><span class="v">${o.c3Ch}</span></div>`:''}
+      ${o.c1Inc?`<div class="cc-row"><span class="k">T1 incentive</span><span class="v">${incLabel(o.c1Inc)}</span></div>`:''}
+      ${o.c2Inc&&o.c2Ch&&o.c2Ch!=='—'?`<div class="cc-row"><span class="k">T2 incentive</span><span class="v">${incLabel(o.c2Inc)}</span></div>`:''}
+      ${o.c3Inc&&o.c3Ch&&o.c3Ch!=='—'?`<div class="cc-row"><span class="k">T3 incentive</span><span class="v">${incLabel(o.c3Inc)}</span></div>`:''}
       <div class="cc-tradeoff">${o.tradeoff}</div>
     </div>`;
   }).join('');
@@ -3407,13 +3444,13 @@ function renderS3(){
           </select>
         </div>
         <div class="camp-field">
-          <label>C1 Incentive</label>
+          <label>T1 Incentive</label>
           <select data-camp-edit="c1Inc" data-orig="${defC1Inc}" class="${ed('c1Inc',defC1Inc)?'edited':''}">
             ${incOpts.map(f=>`<option value="${f.v}"${(e.c1Inc||defC1Inc)===f.v?' selected':''}>${f.l}</option>`).join('')}
           </select>
         </div>
         <div class="camp-field">
-          <label>C2 Incentive</label>
+          <label>T2 Incentive</label>
           <select data-camp-edit="c2Inc" data-orig="${defC2Inc}" class="${ed('c2Inc',defC2Inc)?'edited':''}">
             ${incOpts.map(f=>`<option value="${f.v}"${(e.c2Inc||defC2Inc)===f.v?' selected':''}>${f.l}</option>`).join('')}
           </select>
