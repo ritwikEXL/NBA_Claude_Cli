@@ -3499,7 +3499,7 @@ function renderS4(){
     <div class="outreach-summary">
       <div class="os-title">Outreach Plan Ready</div>
       <div class="os-row"><span class="k">Total contacts</span><span class="v">${S.outreachRows.length}</span></div>
-      <div class="os-row"><span class="k">Members targeted</span><span class="v">${S.inScopeGaps.length}</span></div>
+      <div class="os-row"><span class="k">Members targeted</span><span class="v">${S.selCohorts.reduce((s,c)=>s+c.gaps.length,0)}</span></div>
       <div class="os-row"><span class="k">Estimated cost</span><span class="v">$${cost}</span></div>
       <div class="channel-breakdown">${chBadges}</div>
     </div>
