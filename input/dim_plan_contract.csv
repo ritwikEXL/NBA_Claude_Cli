@@ -1,6 +1,6 @@
-plan_key,contract_id,plan_name,region,segment,star_rating_current,star_rating_target
-P001,H1234,Aurora MA-PD Choice,Northeast,MAPD,3.5,4.0
-P002,H2345,Aurora MA-PD Premier,Southeast,MAPD,4.0,4.5
-P003,H3456,Aurora DSNP Community,Midwest,DSNP,3.0,4.0
-P004,H4567,Aurora MA Value,West,MA-only,4.5,5.0
-P005,H5678,Aurora MA-PD Signature,West,MAPD,2.5,3.0
+plan_key,contract_id,plan_name,region,segment,star_rating_current,star_rating_target,plan_annual_revenue,total_members,plan_pmpm_monthly,source_id
+P001,H1234,UHC Medicare Signature PPO (West),West,PPO,2.5,3.0,91728000,7800,980,demo
+P002,H5678,Aetna Medicare DSNP Community (Midwest),Midwest,DSNP,3.0,3.5,53820000,3900,1150,demo
+P003,H9012,Aetna Medicare Choice PPO (Northeast),Northeast,PPO,3.5,4.0,75888000,6200,1020,demo
+P004,H3456,Aetna Medicare Premier PPO (Southeast),Southeast,PPO,4.0,4.5,54144000,4700,960,demo
+P005,H7890,UHC Medicare Advantage Value (West),West,HMO,4.5,5.0,36312000,3400,890,demo
