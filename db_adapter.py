@@ -2,8 +2,13 @@
 db_adapter.py — Database abstraction layer for CareIntel NBA platform
 ======================================================================
 Supports two backends:
-  - SQLite   (default; local dev + Render free tier)
-  - Snowflake (production; set DB_MODE=snowflake in .env)
+  - SQLite   (default when no Snowflake creds present)
+  - Snowflake (auto-selected when SNOWFLAKE_ACCOUNT is set in .env)
+
+Auto-detection logic (no manual switching needed):
+    SNOWFLAKE_ACCOUNT set  →  Snowflake
+    SNOWFLAKE_ACCOUNT not set  →  SQLite
+    DB_MODE explicitly set  →  overrides auto-detection
 
 Usage:
     from db_adapter import get_db_connection, DB_MODE
@@ -19,7 +24,7 @@ Both adapters expose the same interface:
     conn.row_factory               → set to dict-returning factory
 
 Environment variables:
-    DB_MODE              = sqlite | snowflake   (default: sqlite)
+    DB_MODE              = sqlite | snowflake   (optional — auto-detected)
     DB_PATH              = path to .db file     (sqlite only)
     SNOWFLAKE_ACCOUNT    = <org>-<account>
     SNOWFLAKE_USER       = <username>
@@ -39,7 +44,11 @@ from typing import Any, Iterator
 logger = logging.getLogger(__name__)
 
 # ── Mode detection ─────────────────────────────────────────────────────────────
-DB_MODE = os.getenv("DB_MODE", "sqlite").lower().strip()
+# Auto-detect: if SNOWFLAKE_ACCOUNT is set, default to snowflake.
+# Explicit DB_MODE in .env always wins.
+_explicit = os.getenv("DB_MODE", "").lower().strip()
+_has_sf   = bool(os.getenv("SNOWFLAKE_ACCOUNT", "").strip())
+DB_MODE   = _explicit if _explicit else ("snowflake" if _has_sf else "sqlite")
 
 # ── SQLite helpers ─────────────────────────────────────────────────────────────
 _SQLITE_PATH = os.getenv(
