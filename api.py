@@ -4069,6 +4069,39 @@ def datasource_status(run_id: str):
     return {"run_id": run_id, **status}
 
 
+@app.get("/datasource/mode")
+def datasource_mode_get():
+    """Return current DB mode and whether Snowflake is configured."""
+    try:
+        from db_adapter import get_current_mode, snowflake_configured
+        mode = get_current_mode()
+        sf_ok = snowflake_configured()
+    except Exception:
+        mode = "sqlite"
+        sf_ok = False
+    return {
+        "mode": mode,
+        "snowflake_configured": sf_ok,
+        "label": "❄️ Snowflake" if mode == "snowflake" else "🗃️ Demo Data (SQLite)",
+    }
+
+
+@app.post("/datasource/mode")
+def datasource_mode_set(body: dict):
+    """Switch DB backend at runtime. body: {mode: 'sqlite'|'snowflake'|'auto'}"""
+    requested = body.get("mode", "auto")
+    try:
+        from db_adapter import set_runtime_mode, get_current_mode, snowflake_configured
+        active = set_runtime_mode(requested)
+        return {
+            "mode": active,
+            "snowflake_configured": snowflake_configured(),
+            "label": "❄️ Snowflake" if active == "snowflake" else "🗃️ Demo Data (SQLite)",
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/datasource/tables")
 def datasource_tables():
     """Return row counts for all core data tables — lets the UI confirm data is loaded."""

@@ -520,6 +520,13 @@ details.opp-top-card:not([open])>summary{border-bottom:none;border-radius:12px}
     <button class="nav-tab" data-action="switch-tab" data-val="data">Data Sources</button>
   </div>
   <div class="nav-right">
+    <!-- Data Source Toggle -->
+    <div id="ds-toggle" onclick="toggleDataSource()" title="Click to switch data source"
+      style="display:flex;align-items:center;gap:.4rem;padding:.3rem .7rem;border-radius:999px;cursor:pointer;font-size:.72rem;font-weight:700;letter-spacing:.03em;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;transition:background .2s;white-space:nowrap;user-select:none">
+      <span id="ds-icon">🗃️</span>
+      <span id="ds-label">Demo Data</span>
+      <span style="opacity:.6;font-size:.65rem;margin-left:.15rem">▼</span>
+    </div>
     <div class="history-wrap" id="history-wrap">
       <button class="history-btn" data-action="toggle-history">Sessions ▾</button>
     </div>
@@ -634,6 +641,53 @@ function renderApiStatus(){
   if(S.apiConnected===null){dot.style.background='#9CA3AF';txt.textContent='Connecting…';}
   else if(S.apiConnected){dot.style.background='#6EE7B7';txt.textContent='API Connected';}
   else{dot.style.background='#F87171';txt.textContent='API Offline';}
+}
+
+/* ── Data Source Toggle ────────────────────────────────────────────── */
+let _dsMode='sqlite'; // local cache of current mode
+
+async function loadDataSourceMode(){
+  try{
+    const d=await apiGet('/datasource/mode');
+    _dsMode=d.mode||'sqlite';
+    _updateDsUI(d);
+  }catch(e){}
+}
+
+function _updateDsUI(d){
+  const icon=document.getElementById('ds-icon');
+  const lbl=document.getElementById('ds-label');
+  const tog=document.getElementById('ds-toggle');
+  if(!icon||!lbl||!tog)return;
+  const isSf=(d.mode||_dsMode)==='snowflake';
+  icon.textContent=isSf?'❄️':'🗃️';
+  lbl.textContent=isSf?'Snowflake':'Demo Data';
+  tog.title=isSf?'Live Snowflake — click to switch to SQLite demo data'
+                :'SQLite demo data — click to switch to Snowflake';
+  tog.style.background=isSf?'rgba(56,189,248,.25)':'rgba(255,255,255,.1)';
+  tog.style.borderColor=isSf?'rgba(56,189,248,.5)':'rgba(255,255,255,.25)';
+}
+
+async function toggleDataSource(){
+  const target=_dsMode==='snowflake'?'sqlite':'snowflake';
+  const tog=document.getElementById('ds-toggle');
+  if(tog){tog.style.opacity='.5';tog.style.pointerEvents='none';}
+  try{
+    const d=await fetch('/datasource/mode',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode:target})
+    }).then(r=>{if(!r.ok)return r.json().then(e=>{throw new Error(e.detail||'Switch failed')});return r.json();});
+    _dsMode=d.mode;
+    _updateDsUI(d);
+    showToast(`Switched to ${d.label}`,'info');
+    // Reload opportunity data for the new source
+    if(typeof refreshOpportunities==='function') refreshOpportunities();
+  }catch(e){
+    showToast('⚠️ '+e.message,'error');
+  }finally{
+    if(tog){tog.style.opacity='1';tog.style.pointerEvents='';}
+  }
 }
 
 /* ── AI Analysis Trigger ───────────────────────────────────────────── */
@@ -3843,6 +3897,7 @@ document.addEventListener('click',e=>{
 
 /* ── Init ──────────────────────────────────────────────────────────── */
 checkApiHealth();
+loadDataSourceMode();
 loadData().then(loadLatestSession).then(()=>{
   const _savedTab=sessionStorage.getItem('nba_tab');
   if(_savedTab){S.tab=_savedTab;sessionStorage.removeItem('nba_tab');}

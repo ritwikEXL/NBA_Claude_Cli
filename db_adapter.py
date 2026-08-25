@@ -44,11 +44,43 @@ from typing import Any, Iterator
 logger = logging.getLogger(__name__)
 
 # ── Mode detection ─────────────────────────────────────────────────────────────
-# Auto-detect: if SNOWFLAKE_ACCOUNT is set, default to snowflake.
-# Explicit DB_MODE in .env always wins.
-_explicit = os.getenv("DB_MODE", "").lower().strip()
-_has_sf   = bool(os.getenv("SNOWFLAKE_ACCOUNT", "").strip())
-DB_MODE   = _explicit if _explicit else ("snowflake" if _has_sf else "sqlite")
+# Priority: runtime override (set via dashboard) > DB_MODE env > auto-detect
+_explicit    = os.getenv("DB_MODE", "").lower().strip()
+_has_sf      = bool(os.getenv("SNOWFLAKE_ACCOUNT", "").strip())
+_env_default = _explicit if _explicit else ("snowflake" if _has_sf else "sqlite")
+DB_MODE      = _env_default          # module-level — kept for back-compat
+_runtime_override: str | None = None  # set via set_runtime_mode() from dashboard
+
+
+def get_current_mode() -> str:
+    """Returns the active DB mode (runtime override > env > auto-detect)."""
+    return _runtime_override if _runtime_override else _env_default
+
+
+def snowflake_configured() -> bool:
+    """True if Snowflake credentials are present in the environment."""
+    return _has_sf
+
+
+def set_runtime_mode(mode: str) -> str:
+    """
+    Switch DB backend at runtime — called by the dashboard toggle.
+    mode: 'sqlite' | 'snowflake' | 'auto'
+    Returns the resolved active mode.
+    """
+    global _runtime_override, DB_MODE
+    mode = mode.lower().strip()
+    if mode == "auto":
+        _runtime_override = None
+    elif mode in ("sqlite", "snowflake"):
+        if mode == "snowflake" and not _has_sf:
+            raise ValueError("Snowflake credentials not configured. Add SNOWFLAKE_ACCOUNT to .env")
+        _runtime_override = mode
+    else:
+        raise ValueError(f"Unknown mode '{mode}'. Use sqlite, snowflake, or auto.")
+    DB_MODE = get_current_mode()
+    logger.info("[db_adapter] Runtime DB mode → %s", DB_MODE)
+    return DB_MODE
 
 # ── SQLite helpers ─────────────────────────────────────────────────────────────
 _SQLITE_PATH = os.getenv(
@@ -260,7 +292,8 @@ def get_db_connection():
         with get_db_connection() as conn:
             rows = conn.execute("SELECT …").fetchall()
     """
-    if DB_MODE == "snowflake":
+    mode = get_current_mode()
+    if mode == "snowflake":
         logger.debug("[db_adapter] Using Snowflake backend")
         return _SnowflakeConn()
     else:
