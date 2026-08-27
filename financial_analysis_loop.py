@@ -1,9 +1,12 @@
 """
-CareIntel Financial Analysis Loop — agentic analysis using OpenRouter (OpenAI client).
-The ANTHROPIC_API_KEY env var contains an OpenRouter key.
+CareIntel Financial Analysis Loop — agentic analysis using the Anthropic SDK directly.
+
+Data-reading functions (get_measure_data, get_intervention_complexity) route through
+db_adapter so they query whichever source is active (SQLite or Snowflake).
+Write functions and benchmark lookups always use the local SQLite file.
 """
 
-from openai import OpenAI
+import anthropic as _anthropic_sdk
 from dotenv import load_dotenv
 import sqlite3
 import json
@@ -13,26 +16,66 @@ from datetime import datetime
 
 load_dotenv()
 
-_OPENROUTER_KEY = (
+# ── db_adapter helpers ─────────────────────────────────────────────────────────
+def _active_conn():
+    """Return a connection to the currently active data source (SQLite or Snowflake)."""
+    try:
+        from db_adapter import get_db_connection
+        return get_db_connection()
+    except Exception:
+        return _sqlite_conn()
+
+def _sqlite_conn():
+    """Always returns a local SQLite connection (for metadata/cache tables)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def _is_sf():
+    """True when the active backend is Snowflake."""
+    try:
+        from db_adapter import get_current_mode
+        return get_current_mode() == 'snowflake'
+    except Exception:
+        return False
+
+def _src_filter(source_id: str) -> str:
+    """Return a WHERE fragment for source_id partitioning.
+    In Snowflake mode all rows belong to one schema — no filter needed."""
+    if _is_sf():
+        return "1=1"
+    return f"(source_id='{source_id}' OR source_id IS NULL)"
+
+_API_KEY = (
     os.getenv('ANTHROPIC_API_KEY') or
     os.getenv('OPENROUTER_API_KEY') or
     os.getenv('OPENAI_API_KEY') or
     ''
 )
-if not _OPENROUTER_KEY:
-    logging.warning("[financial] No API key found. Set ANTHROPIC_API_KEY in Render environment variables.")
+if not _API_KEY:
+    logging.warning("[financial] No API key found. Set ANTHROPIC_API_KEY in .env")
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=_OPENROUTER_KEY or 'missing-key',
-    default_headers={
-        "HTTP-Referer": "https://careintel.exl.com",
-        "X-Title": "CareIntel Financial Analysis"
-    }
-)
+# Auto-detect provider: OpenRouter keys start with sk-or-; Anthropic keys start with sk-ant-
+_IS_OPENROUTER = _API_KEY.startswith("sk-or-") or bool(os.getenv('OPENROUTER_API_KEY'))
+_IS_ANTHROPIC  = _API_KEY.startswith("sk-ant-") or (not _IS_OPENROUTER and _API_KEY.startswith("sk-"))
+
+if _IS_OPENROUTER:
+    from openai import OpenAI as _OpenAI
+    client = _OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=_API_KEY or 'missing-key',
+        default_headers={"HTTP-Referer": "https://careintel.exl.com", "X-Title": "CareIntel Financial Analysis"}
+    )
+    _PROVIDER = "openrouter"
+    MODEL = "anthropic/claude-opus-4-8"
+else:
+    client = _anthropic_sdk.Anthropic(api_key=_API_KEY or 'missing-key')
+    _PROVIDER = "anthropic"
+    MODEL = "claude-opus-4-8"
+
+logging.info(f"[financial] Using provider={_PROVIDER} model={MODEL}")
 
 DB_PATH = os.getenv('DB_PATH', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'careintel.db'))
-MODEL = "anthropic/claude-opus-4-8"
 
 
 # ── Database setup ─────────────────────────────────────────────────────────────
@@ -91,9 +134,9 @@ def ensure_financial_analyses_table(conn):
 # ── Tool functions ─────────────────────────────────────────────────────────────
 
 def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
-    """Pull all relevant data for a measure × plan combination."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    """Pull all relevant data for a measure × plan combination.
+    Queries the active data source (SQLite or Snowflake)."""
+    conn = _active_conn()
     result = {}
 
     try:
@@ -118,17 +161,24 @@ def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
         else:
             result['measure'] = {}
 
-        # Plan metadata
+        # Plan metadata — try with plan_population join (SQLite), fall back to dim_plan_contract alone (Snowflake)
         if plan_key:
-            p_row = conn.execute(
-                """SELECT p.plan_key, p.plan_name, p.plan_annual_revenue, p.total_members,
-                          p.star_rating_current, p.star_rating_target, p.region, p.segment,
-                          pp.total_members AS pop_members, pp.plan_revenue AS pop_revenue
-                   FROM dim_plan_contract p
-                   LEFT JOIN plan_population pp ON pp.plan_key = p.plan_key
-                   WHERE p.plan_key=?""",
-                (plan_key,)
-            ).fetchone()
+            try:
+                p_row = conn.execute(
+                    """SELECT p.plan_key, p.plan_name, p.plan_annual_revenue, p.total_members,
+                              p.star_rating_current, p.star_rating_target, p.region, p.segment,
+                              pp.total_members AS pop_members, pp.plan_revenue AS pop_revenue
+                       FROM dim_plan_contract p
+                       LEFT JOIN plan_population pp ON pp.plan_key = p.plan_key
+                       WHERE p.plan_key=?""",
+                    (plan_key,)
+                ).fetchone()
+            except Exception:
+                # plan_population table doesn't exist in Snowflake — plain join
+                p_row = conn.execute(
+                    "SELECT plan_key, plan_name, plan_annual_revenue, total_members, star_rating_current, star_rating_target, region, segment FROM dim_plan_contract WHERE plan_key=?",
+                    (plan_key,)
+                ).fetchone()
             if p_row:
                 pd = dict(p_row)
                 pd['plan_annual_revenue'] = pd.get('pop_revenue') or pd.get('plan_annual_revenue') or 0
@@ -139,8 +189,9 @@ def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
         else:
             result['plan'] = {}
 
-        # Gap distribution
-        gap_q = """
+        # Gap distribution — use _src_filter() so Snowflake skips source_id partitioning
+        _sf = _src_filter(source_id)
+        gap_q = f"""
             SELECT
                 COUNT(*) AS total_gaps,
                 SUM(CASE WHEN LOWER(gap_status) IN ('open','borderline','partial') THEN 1 ELSE 0 END) AS open_gaps,
@@ -148,9 +199,9 @@ def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
                 SUM(CASE WHEN LOWER(gap_status) = 'borderline' THEN 1 ELSE 0 END) AS borderline,
                 SUM(CASE WHEN LOWER(gap_status) = 'partial' THEN 1 ELSE 0 END) AS partial
             FROM fact_member_gap
-            WHERE (source_id=? OR source_id IS NULL)
+            WHERE {_sf}
         """
-        params = [source_id]
+        params = []
         if measure_key:
             gap_q += " AND measure_key=?"
             params.append(measure_key)
@@ -161,19 +212,18 @@ def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
         result['gap_distribution'] = dict(gd) if gd else {}
 
         # Member profiles (digital_literacy, language, ses) for open gaps
+        _gsf = _src_filter(source_id).replace('source_id', 'g.source_id')
         try:
-            mp_rows = conn.execute("""
+            mp_rows = conn.execute(f"""
                 SELECT m.digital_literacy_segment, m.language_preference, m.socioeconomic_segment, COUNT(*) AS cnt
                 FROM fact_member_gap g
                 JOIN dim_member m ON m.member_key = g.member_key
                 WHERE LOWER(g.gap_status) IN ('open','borderline','partial')
-                  AND (g.source_id=? OR g.source_id IS NULL)
-                  {}{}
+                  AND {_gsf}
+                  {"AND g.measure_key=?" if measure_key else ""}
+                  {"AND g.plan_key=?" if plan_key else ""}
                 GROUP BY m.digital_literacy_segment, m.language_preference, m.socioeconomic_segment
-            """.format(
-                "AND g.measure_key=?" if measure_key else "",
-                "AND g.plan_key=?" if plan_key else ""
-            ), [source_id] + ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchall()
+            """, ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchall()
 
             dig_lit = {}; lang_pref = {}; ses_seg = {}
             for r in mp_rows:
@@ -186,12 +236,13 @@ def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
                 'language_preference': lang_pref,
                 'socioeconomic_segment': ses_seg
             }
-        except Exception:
+        except Exception as _e:
+            logging.debug(f"[financial] member_profiles failed: {_e}")
             result['member_profiles'] = {}
 
         # Channel consent
         try:
-            ch_rows = conn.execute("""
+            ch_rows = conn.execute(f"""
                 SELECT
                     ROUND(AVG(CASE WHEN LOWER(cp.email_allowed)='true' THEN 1.0 ELSE 0.0 END), 3) AS pct_email_allowed,
                     ROUND(AVG(CASE WHEN LOWER(cp.sms_allowed)='true' THEN 1.0 ELSE 0.0 END), 3) AS pct_sms_allowed,
@@ -199,61 +250,68 @@ def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
                 FROM fact_member_gap g
                 JOIN dim_member_channel_pref cp ON cp.member_key = g.member_key
                 WHERE LOWER(g.gap_status) IN ('open','borderline','partial')
-                  AND (g.source_id=? OR g.source_id IS NULL)
-                  {}{}
-            """.format(
-                "AND g.measure_key=?" if measure_key else "",
-                "AND g.plan_key=?" if plan_key else ""
-            ), [source_id] + ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
+                  AND {_gsf}
+                  {"AND g.measure_key=?" if measure_key else ""}
+                  {"AND g.plan_key=?" if plan_key else ""}
+            """, ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
             result['channel_consent'] = dict(ch_rows) if ch_rows else {}
-        except Exception:
+        except Exception as _e:
+            logging.debug(f"[financial] channel_consent failed: {_e}")
             result['channel_consent'] = {}
 
         # Propensity distribution for open gaps
+        _sf2 = _src_filter(source_id)
         try:
-            prop_rows = conn.execute("""
+            prop_rows = conn.execute(f"""
                 SELECT
                     MIN(nba_propensity_score) AS min,
                     MAX(nba_propensity_score) AS max,
-                    ROUND(AVG(nba_propensity_score), 3) AS mean
+                    ROUND(AVG(nba_propensity_score), 3) AS mean,
+                    ROUND(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY nba_propensity_score), 3) AS p25,
+                    ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY nba_propensity_score), 3) AS p50,
+                    ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY nba_propensity_score), 3) AS p75,
+                    COUNT(*) AS n
                 FROM fact_member_gap
                 WHERE LOWER(gap_status) IN ('open','borderline','partial')
-                  AND (source_id=? OR source_id IS NULL)
-                  {}{}
-            """.format(
-                "AND measure_key=?" if measure_key else "",
-                "AND plan_key=?" if plan_key else ""
-            ), [source_id] + ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
-
-            # Percentiles via ordered query
-            all_props = conn.execute("""
-                SELECT nba_propensity_score FROM fact_member_gap
-                WHERE LOWER(gap_status) IN ('open','borderline','partial')
-                  AND (source_id=? OR source_id IS NULL)
-                  {}{}
-                ORDER BY nba_propensity_score
-            """.format(
-                "AND measure_key=?" if measure_key else "",
-                "AND plan_key=?" if plan_key else ""
-            ), [source_id] + ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchall()
-
-            scores = [r[0] for r in all_props if r[0] is not None]
-            n = len(scores)
-            def pct(p):
-                if not scores: return None
-                idx = int(n * p / 100)
-                return round(scores[min(idx, n-1)], 3)
-
-            pd_dist = dict(prop_rows) if prop_rows else {}
-            pd_dist['p25'] = pct(25)
-            pd_dist['p50'] = pct(50)
-            pd_dist['p75'] = pct(75)
-            pd_dist['n'] = n
-            result['propensity_distribution'] = pd_dist
+                  AND {_sf2}
+                  {"AND measure_key=?" if measure_key else ""}
+                  {"AND plan_key=?" if plan_key else ""}
+            """, ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
+            result['propensity_distribution'] = dict(prop_rows) if prop_rows else {}
         except Exception:
-            result['propensity_distribution'] = {}
+            # Fallback: pull scores list for percentile calculation (SQLite doesn't have PERCENTILE_CONT)
+            try:
+                prop_stats = conn.execute(f"""
+                    SELECT MIN(nba_propensity_score) AS min, MAX(nba_propensity_score) AS max,
+                           ROUND(AVG(nba_propensity_score), 3) AS mean
+                    FROM fact_member_gap
+                    WHERE LOWER(gap_status) IN ('open','borderline','partial')
+                      AND {_sf2}
+                      {"AND measure_key=?" if measure_key else ""}
+                      {"AND plan_key=?" if plan_key else ""}
+                """, ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
+                all_props = conn.execute(f"""
+                    SELECT nba_propensity_score FROM fact_member_gap
+                    WHERE LOWER(gap_status) IN ('open','borderline','partial')
+                      AND {_sf2}
+                      {"AND measure_key=?" if measure_key else ""}
+                      {"AND plan_key=?" if plan_key else ""}
+                    ORDER BY nba_propensity_score
+                """, ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchall()
+                scores = [r[0] for r in all_props if r[0] is not None]
+                nn = len(scores)
+                def _pct(p):
+                    if not scores: return None
+                    idx = int(nn * p / 100)
+                    return round(scores[min(idx, nn-1)], 3)
+                pd_dist = dict(prop_stats) if prop_stats else {}
+                pd_dist.update({'p25': _pct(25), 'p50': _pct(50), 'p75': _pct(75), 'n': nn})
+                result['propensity_distribution'] = pd_dist
+            except Exception as _e2:
+                logging.debug(f"[financial] propensity fallback failed: {_e2}")
+                result['propensity_distribution'] = {}
 
-        # Historical performance
+        # Historical performance (outreach join — may not exist in Snowflake, graceful skip)
         try:
             hist_q = """
                 SELECT COUNT(*) AS total_outreached,
@@ -277,54 +335,48 @@ def get_measure_data(measure_key=None, plan_key=None, source_id='demo'):
             else:
                 result['historical_performance'] = {'total_outreached': 0, 'closed_count': 0, 'pct_closed': None}
         except Exception:
-            result['historical_performance'] = {}
+            result['historical_performance'] = {'total_outreached': 0, 'closed_count': 0, 'pct_closed': None}
 
         # Avg days open
         try:
-            avg_q = """
+            avg_q = f"""
                 SELECT ROUND(AVG(days_open), 1) AS avg_days_open FROM fact_member_gap
                 WHERE LOWER(gap_status) IN ('open','borderline','partial')
-                  AND (source_id=? OR source_id IS NULL)
-                  {}{}
-            """.format(
-                "AND measure_key=?" if measure_key else "",
-                "AND plan_key=?" if plan_key else ""
-            )
-            avg_row = conn.execute(avg_q, [source_id] + ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
+                  AND {_sf2}
+                  {"AND measure_key=?" if measure_key else ""}
+                  {"AND plan_key=?" if plan_key else ""}
+            """
+            avg_row = conn.execute(avg_q, ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
             result['avg_days_open'] = avg_row[0] if avg_row else None
         except Exception:
             result['avg_days_open'] = None
 
         # Prior year gap pct
         try:
-            py_q = """
-                SELECT ROUND(AVG(CASE WHEN LOWER(previous_year_gap_flag)='true' THEN 1.0 ELSE 0.0 END), 3) AS prior_year_gap_pct
+            py_q = f"""
+                SELECT ROUND(AVG(CASE WHEN previous_year_gap_flag=1 OR LOWER(previous_year_gap_flag)='true' THEN 1.0 ELSE 0.0 END), 3) AS prior_year_gap_pct
                 FROM fact_member_gap
                 WHERE LOWER(gap_status) IN ('open','borderline','partial')
-                  AND (source_id=? OR source_id IS NULL)
-                  {}{}
-            """.format(
-                "AND measure_key=?" if measure_key else "",
-                "AND plan_key=?" if plan_key else ""
-            )
-            py_row = conn.execute(py_q, [source_id] + ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
+                  AND {_sf2}
+                  {"AND measure_key=?" if measure_key else ""}
+                  {"AND plan_key=?" if plan_key else ""}
+            """
+            py_row = conn.execute(py_q, ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
             result['prior_year_gap_pct'] = py_row[0] if py_row else None
         except Exception:
             result['prior_year_gap_pct'] = None
 
         # Avg clinical risk
         try:
-            cr_q = """
+            cr_q = f"""
                 SELECT ROUND(AVG(clinical_risk_score), 3) AS avg_clinical_risk
                 FROM fact_member_gap
                 WHERE LOWER(gap_status) IN ('open','borderline','partial')
-                  AND (source_id=? OR source_id IS NULL)
-                  {}{}
-            """.format(
-                "AND measure_key=?" if measure_key else "",
-                "AND plan_key=?" if plan_key else ""
-            )
-            cr_row = conn.execute(cr_q, [source_id] + ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
+                  AND {_sf2}
+                  {"AND measure_key=?" if measure_key else ""}
+                  {"AND plan_key=?" if plan_key else ""}
+            """
+            cr_row = conn.execute(cr_q, ([measure_key] if measure_key else []) + ([plan_key] if plan_key else [])).fetchone()
             result['avg_clinical_risk'] = cr_row[0] if cr_row else None
         except Exception:
             result['avg_clinical_risk'] = None
@@ -354,39 +406,53 @@ def get_national_benchmarks(measure_key):
 
 
 def get_plan_population(plan_key):
-    """Query plan_population table for true member counts and revenue."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    """Query plan_population table (SQLite local) or dim_plan_contract (Snowflake) for member counts."""
+    # Try local SQLite plan_population first
+    local = _sqlite_conn()
     try:
-        row = conn.execute(
+        row = local.execute(
             "SELECT total_members, plan_revenue FROM plan_population WHERE plan_key=? LIMIT 1",
             (plan_key,)
         ).fetchone()
-        if not row:
-            return {"note": "not in table"}
-        return dict(row)
+        if row:
+            return dict(row)
+    except Exception:
+        pass
+    finally:
+        local.close()
+    # Fallback: read from active source's dim_plan_contract
+    conn = _active_conn()
+    try:
+        row = conn.execute(
+            "SELECT total_members, plan_annual_revenue AS plan_revenue FROM dim_plan_contract WHERE plan_key=? LIMIT 1",
+            (plan_key,)
+        ).fetchone()
+        return dict(row) if row else {"note": "not in table"}
+    except Exception:
+        return {"note": "not in table"}
     finally:
         conn.close()
 
 
 def get_intervention_complexity(measure_key, plan_key=None, source_id='demo'):
-    """Assess how hard this gap is to close based on data signals."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    """Assess how hard this gap is to close based on data signals.
+    Queries the active data source (SQLite or Snowflake)."""
+    conn = _active_conn()
+    _sf3 = _src_filter(source_id)
     result = {}
     try:
-        q = """
+        q = f"""
             SELECT
                 ROUND(AVG(days_open), 1) AS avg_days_open,
-                ROUND(AVG(CASE WHEN LOWER(previous_year_gap_flag)='true' THEN 1.0 ELSE 0.0 END), 3) AS prior_year_gap_pct,
+                ROUND(AVG(CASE WHEN previous_year_gap_flag=1 OR LOWER(previous_year_gap_flag)='true' THEN 1.0 ELSE 0.0 END), 3) AS prior_year_gap_pct,
                 ROUND(AVG(clinical_risk_score), 3) AS avg_clinical_risk,
                 COUNT(*) AS total_open
             FROM fact_member_gap
             WHERE LOWER(gap_status) IN ('open','borderline','partial')
-              AND (source_id=? OR source_id IS NULL)
+              AND {_sf3}
               AND measure_key=?
         """
-        params = [source_id, measure_key]
+        params = [measure_key]
         if plan_key:
             q += " AND plan_key=?"
             params.append(plan_key)
@@ -395,14 +461,14 @@ def get_intervention_complexity(measure_key, plan_key=None, source_id='demo'):
 
         # Channel distribution
         try:
-            ch_q = """
+            ch_q = f"""
                 SELECT upstream_recommended_channel, COUNT(*) AS cnt
                 FROM fact_member_gap
                 WHERE LOWER(gap_status) IN ('open','borderline','partial')
-                  AND (source_id=? OR source_id IS NULL)
+                  AND {_sf3}
                   AND measure_key=?
             """
-            ch_params = [source_id, measure_key]
+            ch_params = [measure_key]
             if plan_key:
                 ch_q += " AND plan_key=?"
                 ch_params.append(plan_key)
@@ -489,124 +555,127 @@ def write_financial_analysis(analysis_obj):
         conn.close()
 
 
-# ── Tools list for OpenAI function-calling ─────────────────────────────────────
+# ── Tools list ────────────────────────────────────────────────────────────────
+# Anthropic native format; converted to OpenAI/OpenRouter format below.
 
 TOOLS = [
     {
-        "type": "function",
-        "function": {
-            "name": "get_measure_data",
-            "description": "Retrieve all data for a measure × plan combination: gap distribution, member profiles (digital literacy, language, SES), channel consent rates, propensity distribution, historical outreach performance, avg days open, prior year gap rate, and avg clinical risk.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "measure_key": {"type": "string", "description": "The measure key (e.g. M001)"},
-                    "plan_key": {"type": "string", "description": "The plan key (e.g. P001)"},
-                    "source_id": {"type": "string", "description": "Data source ID (default: demo)"}
-                },
-                "required": ["measure_key", "plan_key"]
-            }
+        "name": "get_measure_data",
+        "description": "Retrieve all data for a measure × plan combination: gap distribution, member profiles, channel consent rates, propensity distribution, historical outreach performance, avg days open, prior year gap rate, and avg clinical risk.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "measure_key": {"type": "string", "description": "The measure key (e.g. M001 or MX001)"},
+                "plan_key": {"type": "string", "description": "The plan key (e.g. P001 or MP001)"},
+                "source_id": {"type": "string", "description": "Data source ID (default: demo)"}
+            },
+            "required": ["measure_key", "plan_key"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_national_benchmarks",
-            "description": "Get NCQA HEDIS national benchmark rates for a measure: national average, top quartile, bottom quartile.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "measure_key": {"type": "string", "description": "The measure key (e.g. M001)"}
-                },
-                "required": ["measure_key"]
-            }
+        "name": "get_national_benchmarks",
+        "description": "Get NCQA HEDIS national benchmark rates for a measure: national average, top quartile, bottom quartile.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "measure_key": {"type": "string"}
+            },
+            "required": ["measure_key"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_plan_population",
-            "description": "Get accurate total member count and annual revenue for a plan from the plan_population table.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "plan_key": {"type": "string", "description": "The plan key (e.g. P001)"}
-                },
-                "required": ["plan_key"]
-            }
+        "name": "get_plan_population",
+        "description": "Get accurate total member count and annual revenue for a plan.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "plan_key": {"type": "string"}
+            },
+            "required": ["plan_key"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "get_intervention_complexity",
-            "description": "Assess how difficult this gap is to close: avg days open, prior year gap rate, avg clinical risk, and recommended channel distribution for open-gap members.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "measure_key": {"type": "string", "description": "The measure key (e.g. M001)"},
-                    "plan_key": {"type": "string", "description": "Optional plan key to narrow scope"},
-                    "source_id": {"type": "string", "description": "Data source ID (default: demo)"}
-                },
-                "required": ["measure_key"]
-            }
+        "name": "get_intervention_complexity",
+        "description": "Assess how difficult this gap is to close: avg days open, prior year gap rate, avg clinical risk, and channel distribution.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "measure_key": {"type": "string"},
+                "plan_key": {"type": "string"},
+                "source_id": {"type": "string"}
+            },
+            "required": ["measure_key"]
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "write_financial_analysis",
-            "description": "Write the complete financial analysis to the database. Call this only once, after gathering all data and completing your analysis.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "measure_key": {"type": "string"},
-                    "plan_key": {"type": "string"},
-                    "source_id": {"type": "string"},
-                    "analysis_version": {"type": "string"},
-                    "eligible_population": {"type": "integer"},
-                    "current_compliance_rate": {"type": "number"},
-                    "national_benchmark": {"type": "number"},
-                    "gap_to_benchmark": {"type": "number"},
-                    "open_gaps_count": {"type": "integer"},
-                    "tier_1_count": {"type": "integer"},
-                    "tier_1_definition": {"type": "string", "description": "Plain English definition of Tier 1 based on actual data patterns observed"},
-                    "tier_1_closure_rate": {"type": "number"},
-                    "tier_1_closure_rationale": {"type": "string", "description": "Specific rationale citing actual data numbers"},
-                    "tier_1_cost_per_member": {"type": "number"},
-                    "tier_1_cost_rationale": {"type": "string"},
-                    "tier_1_expected_closures": {"type": "integer"},
-                    "tier_2_count": {"type": "integer"},
-                    "tier_2_definition": {"type": "string"},
-                    "tier_2_closure_rate": {"type": "number"},
-                    "tier_2_closure_rationale": {"type": "string"},
-                    "tier_2_cost_per_member": {"type": "number"},
-                    "tier_2_expected_closures": {"type": "integer"},
-                    "tier_3_count": {"type": "integer"},
-                    "tier_3_definition": {"type": "string"},
-                    "tier_3_closure_rate": {"type": "number"},
-                    "tier_3_closure_rationale": {"type": "string"},
-                    "tier_3_cost_per_member": {"type": "number"},
-                    "tier_3_expected_closures": {"type": "integer"},
-                    "expected_total_closures": {"type": "integer"},
-                    "stars_improvement": {"type": "number"},
-                    "stars_improvement_rationale": {"type": "string"},
-                    "cms_bonus_impact": {"type": "number"},
-                    "total_outreach_cost": {"type": "number"},
-                    "net_return": {"type": "number"},
-                    "return_per_dollar": {"type": "number"},
-                    "confidence_level": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
-                    "confidence_rationale": {"type": "string"},
-                    "key_risks": {"type": "array", "items": {"type": "string"}},
-                    "key_opportunities": {"type": "array", "items": {"type": "string"}},
-                    "recommended_approach": {"type": "string"},
-                    "plain_english_summary": {"type": "string", "description": "Detailed PM briefing with 5 clearly labeled sections separated by ' | ': (1) FORMULA: state the exact formulas used for CMS bonus and medical savings; (2) POPULATION: total eligible members, total open gaps, T1/T2/T3 breakdown with counts; (3) EXPECTED COMPLETIONS: T1 closures at X% rate + T2 closures at Y% rate = total expected completions, and what % of open gaps that closes; (4) PLAN FINANCIALS: Stars impact, CMS bonus = formula result, Medical savings = savings_per_closure × closures = result, Total benefit to plan, Campaign cost, Net return; (5) PATIENT BENEFITS: 1-2 specific health outcome improvements members gain from this gap closing. Use real numbers throughout. No hedging."}
-                },
-                "required": ["measure_key", "plan_key", "tier_1_definition", "tier_1_closure_rationale", "plain_english_summary"]
-            }
+        "name": "write_financial_analysis",
+        "description": "Write the complete financial analysis to the database. Call this only once, after all data is gathered.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "measure_key": {"type": "string"},
+                "plan_key": {"type": "string"},
+                "source_id": {"type": "string"},
+                "analysis_version": {"type": "string"},
+                "eligible_population": {"type": "integer"},
+                "current_compliance_rate": {"type": "number"},
+                "national_benchmark": {"type": "number"},
+                "gap_to_benchmark": {"type": "number"},
+                "open_gaps_count": {"type": "integer"},
+                "tier_1_count": {"type": "integer"},
+                "tier_1_definition": {"type": "string"},
+                "tier_1_closure_rate": {"type": "number"},
+                "tier_1_closure_rationale": {"type": "string"},
+                "tier_1_cost_per_member": {"type": "number"},
+                "tier_1_cost_rationale": {"type": "string"},
+                "tier_1_expected_closures": {"type": "integer"},
+                "tier_2_count": {"type": "integer"},
+                "tier_2_definition": {"type": "string"},
+                "tier_2_closure_rate": {"type": "number"},
+                "tier_2_closure_rationale": {"type": "string"},
+                "tier_2_cost_per_member": {"type": "number"},
+                "tier_2_expected_closures": {"type": "integer"},
+                "tier_3_count": {"type": "integer"},
+                "tier_3_definition": {"type": "string"},
+                "tier_3_closure_rate": {"type": "number"},
+                "tier_3_closure_rationale": {"type": "string"},
+                "tier_3_cost_per_member": {"type": "number"},
+                "tier_3_expected_closures": {"type": "integer"},
+                "expected_total_closures": {"type": "integer"},
+                "stars_improvement": {"type": "number"},
+                "stars_improvement_rationale": {"type": "string"},
+                "cms_bonus_impact": {"type": "number"},
+                "total_outreach_cost": {"type": "number"},
+                "net_return": {"type": "number"},
+                "return_per_dollar": {"type": "number"},
+                "confidence_level": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+                "confidence_rationale": {"type": "string"},
+                "key_risks": {"type": "array", "items": {"type": "string"}},
+                "key_opportunities": {"type": "array", "items": {"type": "string"}},
+                "recommended_approach": {"type": "string"},
+                "plain_english_summary": {"type": "string", "description": "5 pipe-separated sections: FORMULA | POPULATION | COMPLETIONS | PLAN FINANCIALS | PATIENT BENEFITS with real numbers."}
+            },
+            "required": ["measure_key", "plan_key", "tier_1_definition", "tier_1_closure_rationale", "plain_english_summary"]
         }
     }
 ]
+
+# Convert to OpenAI/OpenRouter format for that provider path
+_TOOLS_OR = [
+    {
+        "type": "function",
+        "function": {
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "parameters": t["input_schema"],
+        }
+    }
+    for t in TOOLS
+]
+
+def _active_tools():
+    """Return tools in the format expected by the current provider."""
+    return _TOOLS_OR if _IS_OPENROUTER else TOOLS
 
 
 # ── Tool dispatcher ────────────────────────────────────────────────────────────
@@ -738,67 +807,97 @@ availability, prior year gap rate. If historical data exists, use those actual r
 In tier_X_closure_rationale: be specific — cite actual numbers from the data you saw.
 In plain_english_summary: be specific with numbers. Do not use generic language."""
 
-    # Ensure table exists
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    ensure_financial_analyses_table(conn)
-    conn.commit()
-    conn.close()
+    # Ensure local cache table exists
+    local_conn = sqlite3.connect(DB_PATH)
+    local_conn.row_factory = sqlite3.Row
+    ensure_financial_analyses_table(local_conn)
+    local_conn.commit()
+    local_conn.close()
 
     messages = [{"role": "user", "content": user_message}]
 
     for iteration in range(10):
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "system", "content": system_prompt}] + messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            max_tokens=8000,
-            temperature=0,  # deterministic — same data always produces same analysis
-        )
+        wrote_analysis = False
+        final_result = None
 
-        msg = response.choices[0].message
-        messages.append({
-            "role": "assistant",
-            "content": msg.content,
-            "tool_calls": [
-                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                for tc in (msg.tool_calls or [])
-            ] if msg.tool_calls else None
-        })
+        if _IS_OPENROUTER:
+            # ── OpenRouter / OpenAI SDK path ──────────────────────────────────
+            or_messages = [{"role": "system", "content": system_prompt}] + messages
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=or_messages,
+                tools=_active_tools(),
+                tool_choice="auto",
+                max_tokens=8000,
+            )
+            choice = response.choices[0]
+            msg = choice.message
 
-        if not msg.tool_calls:
-            break
+            # Append assistant turn (OpenAI format)
+            messages.append({"role": "assistant", "content": msg.content, "tool_calls": msg.tool_calls})
 
-        for tc in msg.tool_calls:
-            raw = tc.function.arguments
-            try:
-                args = json.loads(raw)
-            except json.JSONDecodeError:
-                # Response was truncated — strip trailing incomplete content and retry
-                truncated = raw.rstrip()
-                # Remove trailing incomplete key-value pairs
-                for end_char in ['}', ']']:
-                    last = truncated.rfind(end_char)
-                    if last != -1:
-                        candidate = truncated[:last+1]
-                        try:
-                            args = json.loads(candidate)
-                            break
-                        except json.JSONDecodeError:
-                            continue
-                else:
-                    logging.error(f"[financial] Could not parse tool args for {tc.function.name}")
+            # Check finish reason
+            if choice.finish_reason != "tool_calls":
+                break
+
+            # Process tool calls
+            tool_results = []
+            for tc in (msg.tool_calls or []):
+                tool_name = tc.function.name
+                try:
+                    args = json.loads(tc.function.arguments)
+                except Exception:
+                    args = {}
+                result = _dispatch_tool(tool_name, args, source_id)
+                tool_results.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(result, default=str),
+                })
+                if tool_name == 'write_financial_analysis':
+                    logging.info(f"[financial] Analysis written for {measure_key} x {plan_key}")
+                    wrote_analysis = True
+                    final_result = result
+
+            messages.extend(tool_results)
+
+        else:
+            # ── Native Anthropic SDK path ─────────────────────────────────────
+            response = client.messages.create(
+                model=MODEL,
+                system=system_prompt,
+                messages=messages,
+                tools=_active_tools(),
+                max_tokens=8000,
+            )
+
+            messages.append({"role": "assistant", "content": response.content})
+
+            if response.stop_reason != "tool_use":
+                break
+
+            tool_results = []
+            for block in response.content:
+                if block.type != "tool_use":
                     continue
-            result = _dispatch_tool(tc.function.name, args, source_id)
-            if tc.function.name == 'write_financial_analysis':
-                logging.info(f"[financial] Analysis written for {measure_key} x {plan_key}")
-                return result  # Done — return the written analysis
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": json.dumps(result, default=str)
-            })
+                tool_name = block.name
+                args = block.input  # already parsed dict
+                result = _dispatch_tool(tool_name, args, source_id)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(result, default=str),
+                })
+                if tool_name == 'write_financial_analysis':
+                    logging.info(f"[financial] Analysis written for {measure_key} x {plan_key}")
+                    wrote_analysis = True
+                    final_result = result
+
+            if tool_results:
+                messages.append({"role": "user", "content": tool_results})
+
+        if wrote_analysis:
+            return final_result
 
     return {"error": "Analysis did not complete"}
 

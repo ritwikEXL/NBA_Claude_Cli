@@ -61,3 +61,5 @@ cloudflared.exe
 # Tunnel URL files
 ngrok_url.txt
 tunnel_*.log
+snowflake_key.p8
+*.p8

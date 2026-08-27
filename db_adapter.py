@@ -194,7 +194,7 @@ class _SnowflakeCursorWrapper:
 class _SnowflakeConn:
     """Adapter wrapping snowflake.connector.SnowflakeConnection."""
 
-    def __init__(self):
+    def __init__(self, database: str = None, schema: str = None, warehouse: str = None):
         try:
             import snowflake.connector as sf
         except ImportError:
@@ -206,14 +206,40 @@ class _SnowflakeConn:
         connect_kwargs: dict[str, Any] = dict(
             account=_sf_env("SNOWFLAKE_ACCOUNT"),
             user=_sf_env("SNOWFLAKE_USER"),
-            password=_sf_env("SNOWFLAKE_PASSWORD"),
-            database=_sf_env("SNOWFLAKE_DATABASE", required=False) or "CAREINTEL",
-            schema=_sf_env("SNOWFLAKE_SCHEMA", required=False) or "NBA",
-            warehouse=_sf_env("SNOWFLAKE_WAREHOUSE", required=False) or "COMPUTE_WH",
+            database=database or _sf_env("SNOWFLAKE_DATABASE", required=False) or "CAREINTEL",
+            schema=schema or _sf_env("SNOWFLAKE_SCHEMA", required=False) or "NBA",
+            warehouse=warehouse or _sf_env("SNOWFLAKE_WAREHOUSE", required=False) or "COMPUTE_WH",
         )
         role = _sf_env("SNOWFLAKE_ROLE", required=False)
         if role:
             connect_kwargs["role"] = role
+
+        # Auth: key-pair takes priority over password (bypasses MFA)
+        key_path = _sf_env("SNOWFLAKE_PRIVATE_KEY_PATH", required=False)
+        if key_path and os.path.exists(key_path):
+            from cryptography.hazmat.primitives.serialization import load_pem_private_key, Encoding, PrivateFormat, NoEncryption
+            with open(key_path, "rb") as f:
+                priv = load_pem_private_key(f.read(), password=None)
+            connect_kwargs["private_key"] = priv.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+            logger.info("[db_adapter] Using key-pair authentication")
+        else:
+            pwd = _sf_env("SNOWFLAKE_PASSWORD", required=False)
+            if not pwd:
+                raise EnvironmentError("[db_adapter] Set SNOWFLAKE_PASSWORD or SNOWFLAKE_PRIVATE_KEY_PATH")
+            connect_kwargs["password"] = pwd
+
+        # ── Timeout / network settings ─────────────────────────────────────────
+        # Snowflake writes large result batches to S3 and downloads them.
+        # On high-latency or proxied networks (7 s default) this causes:
+        #   ReadTimeoutError: HTTPSConnectionPool … Read timed out (read timeout=7)
+        # Fix: increase network_timeout + socket_timeout, and serialise S3 downloads
+        # with client_prefetch_threads=1 to avoid cascading parallel timeouts.
+        connect_kwargs.update(dict(
+            login_timeout=90,          # seconds to wait for initial auth
+            network_timeout=120,       # seconds to wait for a network response
+            socket_timeout=120,        # seconds for each socket read (covers S3 batch downloads)
+            client_prefetch_threads=1, # download S3 result batches one-at-a-time (less overload)
+        ))
 
         logger.info("[db_adapter] Connecting to Snowflake account=%s db=%s schema=%s",
                     connect_kwargs["account"], connect_kwargs["database"], connect_kwargs["schema"])
@@ -285,9 +311,10 @@ class _SnowflakeConn:
 
 # ── Public factory ─────────────────────────────────────────────────────────────
 
-def get_db_connection():
+def get_db_connection(database: str = None, schema: str = None, warehouse: str = None):
     """
     Returns a connection object for the configured backend.
+    Pass database/schema/warehouse to override env defaults for Snowflake.
     Use as a context manager:
         with get_db_connection() as conn:
             rows = conn.execute("SELECT …").fetchall()
@@ -295,7 +322,7 @@ def get_db_connection():
     mode = get_current_mode()
     if mode == "snowflake":
         logger.debug("[db_adapter] Using Snowflake backend")
-        return _SnowflakeConn()
+        return _SnowflakeConn(database=database, schema=schema, warehouse=warehouse)
     else:
         logger.debug("[db_adapter] Using SQLite backend at %s", _SQLITE_PATH)
         return _SQLiteConn(_SQLITE_PATH)

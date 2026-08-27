@@ -51,7 +51,8 @@ app.add_middleware(
 
 
 @contextmanager
-def get_db():
+def _local_db():
+    """Always-SQLite context manager for startup DDL, migrations, and meta-table ops."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -62,12 +63,72 @@ def get_db():
         conn.close()
 
 
+@contextmanager
+def get_db():
+    """Context manager for DB connections — routes to Snowflake when runtime mode is 'snowflake'.
+    Uses the active Snowflake connection's database/schema when in snowflake mode."""
+    from db_adapter import get_current_mode, get_db_connection
+    if get_current_mode() == 'snowflake':
+        try:
+            sf = _active_sf_conn
+            conn = get_db_connection(
+                database=sf.get("sf_database"),
+                schema=sf.get("sf_schema"),
+                warehouse=sf.get("sf_warehouse")
+            )
+        except Exception:
+            conn = get_db_connection()
+        try:
+            yield conn
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _is_snowflake() -> bool:
+    """True when the current runtime DB is Snowflake."""
+    try:
+        from db_adapter import get_current_mode
+        return get_current_mode() == 'snowflake'
+    except Exception:
+        return False
+
+
+def _src_filters(gap_alias: str = "g", plan_alias: str = "p") -> tuple[str, str]:
+    """
+    Return (gap_filter, plan_filter) WHERE-clause fragments.
+    In Snowflake mode all rows are valid — no source_id partitioning.
+    In SQLite mode restrict to the active upload source.
+    """
+    if _is_snowflake():
+        return "1=1", "1=1"
+    src = active_source_id
+    if src == "demo":
+        gf = f"({gap_alias}.source_id = 'demo' OR {gap_alias}.source_id IS NULL)"
+        pf = f"({plan_alias}.source_id = 'demo' OR {plan_alias}.source_id IS NULL)"
+    else:
+        gf = f"{gap_alias}.source_id = '{src}'"
+        pf = f"{plan_alias}.source_id = '{src}'"
+    return gf, pf
+
+
 def rows_as_dicts(rows) -> list[dict]:
     return [dict(r) for r in rows]
 
 
 def _ensure_tables():
-    with get_db() as conn:
+    with _local_db() as conn:
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS whatsapp_conversations (
             conversation_id TEXT PRIMARY KEY,
@@ -138,16 +199,55 @@ _ensure_tables()
 # Initialize active_source_id from DB (survives server restarts)
 def _load_active_source_id() -> str:
     try:
-        with get_db() as _c:
+        with _local_db() as _c:
             row = _c.execute("SELECT source_id FROM data_sources WHERE is_active=1 LIMIT 1").fetchone()
-            return row[0] if row else "demo"
+            return row['source_id'] if row else "demo"
     except Exception:
         return "demo"
 
 active_source_id = _load_active_source_id()
 
+# ── Snowflake connections metadata table ──────────────────────────────────────
+with _local_db() as _mc:
+    _mc.executescript("""
+    CREATE TABLE IF NOT EXISTS snowflake_connections (
+        conn_id      TEXT PRIMARY KEY,
+        label        TEXT NOT NULL,
+        sf_database  TEXT NOT NULL,
+        sf_schema    TEXT NOT NULL DEFAULT 'NBA',
+        sf_warehouse TEXT NOT NULL DEFAULT 'COMPUTE_WH',
+        is_active    INTEGER DEFAULT 0,
+        created_at   TEXT
+    );
+    """)
+    # Seed default connection from .env if table is empty
+    _existing = _mc.execute("SELECT COUNT(*) FROM snowflake_connections").fetchone()[0]
+    if _existing == 0:
+        import os as _os
+        _sf_db = _os.getenv("SNOWFLAKE_DATABASE", "CAREINTEL")
+        _sf_sc = _os.getenv("SNOWFLAKE_SCHEMA", "NBA")
+        _sf_wh = _os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
+        _mc.execute(
+            "INSERT OR IGNORE INTO snowflake_connections (conn_id,label,sf_database,sf_schema,sf_warehouse,is_active,created_at) VALUES (?,?,?,?,?,?,?)",
+            ("sf_default", f"❄️ {_sf_db}/{_sf_sc}", _sf_db, _sf_sc, _sf_wh, 1, "2026-01-01")
+        )
+
+# active Snowflake connection id (in-memory, synced from DB)
+def _load_active_sf_conn() -> dict:
+    try:
+        with _local_db() as _c:
+            row = _c.execute("SELECT * FROM snowflake_connections WHERE is_active=1 LIMIT 1").fetchone()
+            if row:
+                return dict(row)
+    except Exception:
+        pass
+    return {"conn_id": "sf_default", "sf_database": os.getenv("SNOWFLAKE_DATABASE","CAREINTEL"),
+            "sf_schema": os.getenv("SNOWFLAKE_SCHEMA","NBA"), "sf_warehouse": os.getenv("SNOWFLAKE_WAREHOUSE","COMPUTE_WH")}
+
+_active_sf_conn: dict = _load_active_sf_conn()
+
 # Safe schema migrations — ignore errors if column already exists
-with get_db() as _mc:
+with _local_db() as _mc:
     try:
         _mc.execute("ALTER TABLE campaign_evaluations ADD COLUMN measure_code TEXT")
     except Exception:
@@ -229,7 +329,7 @@ with get_db() as _mc:
 # New lookup tables — create if missing, seed if empty
 _TODAY = "2026-07-09"
 
-with get_db() as _mc:
+with _local_db() as _mc:
     _mc.executescript("""
     CREATE TABLE IF NOT EXISTS measure_benchmarks (
         measure_key TEXT,
@@ -353,7 +453,7 @@ async def startup_event():
         "ALTER TABLE fact_member_gap ADD COLUMN last_outreach_channel TEXT",
     ]
     try:
-        with get_db() as _mc:
+        with _local_db() as _mc:
             for _col in _post_seed_migrations:
                 try:
                     _mc.execute(_col)
@@ -398,16 +498,17 @@ def start_session(body: dict[str, Any] = None):
 
 @app.get("/opportunities")
 def get_opportunities():
-    src = active_source_id
-    src_gap  = "(g.source_id = 'demo' OR g.source_id IS NULL)" if src == "demo" else f"g.source_id = '{src}'"
-    src_plan = "(p.source_id = 'demo' OR p.source_id IS NULL)" if src == "demo" else f"p.source_id = '{src}'"
+    src_gap, src_plan = _src_filters("g", "p")
     with get_db() as conn:
+        # hedis_domain may not exist in all schemas (e.g. MERIDIAN_HEALTH) — use
+        # a safe fallback expression that works on both SQLite and Snowflake.
+        _hd_col = "m.measure_type" if _is_snowflake() else "m.hedis_domain"
         rows = conn.execute(f"""
             SELECT
                 m.measure_key,
                 m.measure_code,
                 m.measure_name,
-                m.hedis_domain,
+                {_hd_col} AS hedis_domain,
                 m.star_weight,
                 p.plan_key,
                 p.plan_name,
@@ -423,8 +524,10 @@ def get_opportunities():
             JOIN dim_measure        m ON m.measure_key = g.measure_key
             JOIN dim_plan_contract  p ON p.plan_key    = g.plan_key
             WHERE {src_gap} AND {src_plan}
-            GROUP BY m.measure_key, p.plan_key
-            HAVING open_gap_count > 0
+            GROUP BY m.measure_key, m.measure_code, m.measure_name, {_hd_col}, m.star_weight,
+                     p.plan_key, p.plan_name, p.region, p.segment, p.star_rating_current, p.star_rating_target
+            HAVING COUNT(CASE WHEN LOWER(g.gap_status) IN ('open','borderline')
+                              AND LOWER(g.is_suppressed) != 'true' THEN 1 END) > 0
         """).fetchall()
 
     results = []
@@ -443,48 +546,62 @@ def get_opportunities():
 @app.get("/opportunities/financial")
 def get_opportunities_financial():
     with get_db() as conn:
-        # ── Load benchmarks from DB ────────────────────────────────────
-        bench_rows = conn.execute("""
-            SELECT m.measure_key, m.measure_code, mb.national_avg_rate,
-                   mb.top_quartile_rate, mb.bottom_quartile_rate
-            FROM dim_measure m
-            JOIN measure_benchmarks mb ON mb.measure_key = m.measure_key
-            WHERE mb.benchmark_year = (
-                SELECT MAX(benchmark_year) FROM measure_benchmarks WHERE measure_key = m.measure_key
-            )
-        """).fetchall()
-        benchmarks = {r["measure_key"]: dict(r) for r in bench_rows}
+        # ── Load benchmarks from DB (SQLite-only; Snowflake skips gracefully) ─
+        benchmarks = {}
+        try:
+            bench_rows = conn.execute("""
+                SELECT m.measure_key, m.measure_code, mb.national_avg_rate,
+                       mb.top_quartile_rate, mb.bottom_quartile_rate
+                FROM dim_measure m
+                JOIN measure_benchmarks mb ON mb.measure_key = m.measure_key
+                WHERE mb.benchmark_year = (
+                    SELECT MAX(benchmark_year) FROM measure_benchmarks WHERE measure_key = m.measure_key
+                )
+            """).fetchall()
+            benchmarks = {r["measure_key"]: dict(r) for r in bench_rows}
+        except Exception:
+            pass
 
-        # ── Load costs from DB (cheapest channel per tier) ─────────────
-        cost_rows = conn.execute(
-            "SELECT tier, MIN(total_cost) AS cost FROM outreach_costs GROUP BY tier"
-        ).fetchall()
-        costs = {r["tier"]: r["cost"] for r in cost_rows}
-        T1_COST = costs.get(1, 0.50)
-        T2_COST = costs.get(2, 15.50)
-        T3_COST = costs.get(3, 25.10)
+        # ── Load costs from DB (SQLite-only; fall back to defaults) ───────────
+        T1_COST, T2_COST, T3_COST = 0.50, 15.50, 25.10
+        try:
+            cost_rows = conn.execute(
+                "SELECT tier, MIN(total_cost) AS cost FROM outreach_costs GROUP BY tier"
+            ).fetchall()
+            costs = {r["tier"]: r["cost"] for r in cost_rows}
+            T1_COST = costs.get(1, 0.50)
+            T2_COST = costs.get(2, 15.50)
+            T3_COST = costs.get(3, 25.10)
+        except Exception:
+            pass
 
-        # ── Load closure rate assumptions from DB ──────────────────────
-        cra_rows = conn.execute(
-            "SELECT measure_key, tier, expected_rate, basis FROM closure_rate_assumptions"
-        ).fetchall()
-        closure_assumptions = {(r["measure_key"], r["tier"]): dict(r) for r in cra_rows}
+        # ── Load closure rate assumptions from DB (SQLite-only) ───────────────
+        closure_assumptions = {}
+        try:
+            cra_rows = conn.execute(
+                "SELECT measure_key, tier, expected_rate, basis FROM closure_rate_assumptions"
+            ).fetchall()
+            closure_assumptions = {(r["measure_key"], r["tier"]): dict(r) for r in cra_rows}
+        except Exception:
+            pass
 
         # ── Load historical closure rates ──────────────────────────────
-        hist_rows = conn.execute("""
-            SELECT g.measure_key,
-                   COUNT(*) AS total_outreached,
-                   SUM(CASE WHEN LOWER(g.gap_status) = 'closed' THEN 1 ELSE 0 END) AS closed_count
-            FROM fact_nba_outreach_plan o
-            JOIN fact_member_gap g ON g.member_gap_key = o.member_gap_key
-            WHERE o.status IN ('COMPLETED','SENT','SCHEDULED')
-            GROUP BY g.measure_key
-        """).fetchall()
-        hist_by_mk = {r["measure_key"]: dict(r) for r in hist_rows}
+        hist_by_mk = {}
+        try:
+            hist_rows = conn.execute("""
+                SELECT g.measure_key,
+                       COUNT(*) AS total_outreached,
+                       SUM(CASE WHEN LOWER(g.gap_status) = 'closed' THEN 1 ELSE 0 END) AS closed_count
+                FROM fact_nba_outreach_plan o
+                JOIN fact_member_gap g ON g.member_gap_key = o.member_gap_key
+                WHERE o.status IN ('COMPLETED','SENT','SCHEDULED')
+                GROUP BY g.measure_key
+            """).fetchall()
+            hist_by_mk = {r["measure_key"]: dict(r) for r in hist_rows}
+        except Exception:
+            pass
 
-        src = active_source_id
-        src_g = "(g.source_id='demo' OR g.source_id IS NULL)" if src=="demo" else f"g.source_id='{src}'"
-        src_p = "(p.source_id='demo' OR p.source_id IS NULL)" if src=="demo" else f"p.source_id='{src}'"
+        src_g, src_p = _src_filters("g", "p")
 
         # ── Eligible / compliant counts from fact_member_gap ──────────
         elig_rows = conn.execute(f"""
@@ -521,8 +638,10 @@ def get_opportunities_financial():
             plan_pop = {}
 
         # ── Main query ─────────────────────────────────────────────────
+        _hd_col2 = "m.measure_type" if _is_snowflake() else "m.hedis_domain"
         rows = conn.execute(f"""
-            SELECT m.measure_key, m.measure_code, m.measure_name, m.star_weight, m.hedis_domain,
+            SELECT m.measure_key, m.measure_code, m.measure_name, m.star_weight,
+                   {_hd_col2} AS hedis_domain,
                    p.plan_key, p.plan_name, p.region, p.segment,
                    p.plan_annual_revenue, p.total_members, p.plan_pmpm_monthly,
                    p.star_rating_current, p.star_rating_target,
@@ -531,24 +650,31 @@ def get_opportunities_financial():
                              AND LOWER(g.is_suppressed)!='true' THEN 1 ELSE 0 END) AS open_gaps,
                    SUM(CASE WHEN LOWER(g.gap_status)='closed' THEN 1 ELSE 0 END) AS closed_gaps,
                    SUM(CASE WHEN g.nba_propensity_score > 0.70
-                             AND LOWER(g.gap_status) IN ('open','borderline','partial') THEN 1 ELSE 0 END) AS tier1_count,
+                             AND LOWER(g.gap_status) IN ('open','borderline','partial')
+                             AND LOWER(g.is_suppressed)!='true' THEN 1 ELSE 0 END) AS tier1_count,
                    SUM(CASE WHEN g.nba_propensity_score BETWEEN 0.45 AND 0.70
-                             AND LOWER(g.gap_status) IN ('open','borderline','partial') THEN 1 ELSE 0 END) AS tier2_count,
+                             AND LOWER(g.gap_status) IN ('open','borderline','partial')
+                             AND LOWER(g.is_suppressed)!='true' THEN 1 ELSE 0 END) AS tier2_count,
                    SUM(CASE WHEN g.nba_propensity_score < 0.45
-                             AND LOWER(g.gap_status) IN ('open','borderline','partial') THEN 1 ELSE 0 END) AS tier3_count
+                             AND LOWER(g.gap_status) IN ('open','borderline','partial')
+                             AND LOWER(g.is_suppressed)!='true' THEN 1 ELSE 0 END) AS tier3_count
             FROM fact_member_gap g
             JOIN dim_measure       m  ON m.measure_key = g.measure_key
             JOIN dim_plan_contract p  ON p.plan_key    = g.plan_key
             WHERE {src_g} AND {src_p}
-            GROUP BY m.measure_key, p.plan_key
-            HAVING open_gaps > 0
+            GROUP BY m.measure_key, m.measure_code, m.measure_name, m.star_weight, {_hd_col2},
+                     p.plan_key, p.plan_name, p.region, p.segment,
+                     p.plan_annual_revenue, p.total_members, p.plan_pmpm_monthly,
+                     p.star_rating_current, p.star_rating_target
+            HAVING SUM(CASE WHEN LOWER(g.gap_status) IN ('open','borderline','partial')
+                             AND LOWER(g.is_suppressed)!='true' THEN 1 ELSE 0 END) > 0
         """).fetchall()
 
     # Load any Claude-generated analyses into a lookup dict
     ai_analyses = {}
     try:
         with get_db() as conn2:
-            fa_rows = conn2.execute("SELECT * FROM financial_analyses").fetchall()
+            fa_rows = conn2.execute("SELECT * FROM financial_analyses LIMIT 200").fetchall()
             for fa in fa_rows:
                 key = (fa['measure_key'], fa['plan_key'])
                 existing = ai_analyses.get(key)
@@ -924,8 +1050,14 @@ def trigger_analysis(measure_key: str, plan_key: str, force: bool = False):
         try:
             from financial_analysis_loop import analyze_opportunity
             result = analyze_opportunity(measure_key, plan_key, source_id=src)
-            _analysis_jobs[job_id]["status"] = "complete"
-            _analysis_jobs[job_id]["analysis"] = result
+            # If analyze_opportunity itself returned an error dict, surface it as an error job
+            if isinstance(result, dict) and result.get("error"):
+                logging.error(f"[financial] Analysis returned error: {result['error']}")
+                _analysis_jobs[job_id]["status"] = "error"
+                _analysis_jobs[job_id]["error"] = result["error"]
+            else:
+                _analysis_jobs[job_id]["status"] = "complete"
+                _analysis_jobs[job_id]["analysis"] = result
         except Exception as e:
             logging.error(f"[financial] Single analysis error: {e}")
             _analysis_jobs[job_id]["status"] = "error"
@@ -1001,12 +1133,12 @@ def get_all_analyses():
 def get_data_status():
     today_str = str(date.today())
     with get_db() as conn:
-        members_count = conn.execute("SELECT COUNT(*) FROM dim_member").fetchone()[0]
-        gaps_count    = conn.execute("SELECT COUNT(*) FROM fact_member_gap").fetchone()[0]
-        plans_count   = conn.execute("SELECT COUNT(*) FROM dim_plan_contract").fetchone()[0]
+        members_count = conn.execute("SELECT COUNT(*) AS cnt FROM dim_member").fetchone()['cnt']
+        gaps_count    = conn.execute("SELECT COUNT(*) AS cnt FROM fact_member_gap").fetchone()['cnt']
+        plans_count   = conn.execute("SELECT COUNT(*) AS cnt FROM dim_plan_contract").fetchone()['cnt']
         runs_count    = conn.execute(
-            "SELECT COUNT(DISTINCT nba_run_id) FROM fact_nba_trace"
-        ).fetchone()[0]
+            "SELECT COUNT(DISTINCT nba_run_id) AS cnt FROM fact_nba_trace"
+        ).fetchone()['cnt']
     return {
         "members": {"count": members_count, "source": "demo", "updated": today_str},
         "gaps":    {"count": gaps_count,    "source": "demo", "updated": today_str},
@@ -1019,7 +1151,7 @@ def get_data_status():
 
 @app.get("/data/sources")
 def get_data_sources():
-    with get_db() as conn:
+    with _local_db() as conn:
         rows = conn.execute("SELECT * FROM data_sources ORDER BY is_active DESC, created_timestamp DESC").fetchall()
     return rows_as_dicts(rows)
 
@@ -1029,7 +1161,7 @@ def get_data_sources():
 @app.post("/data/sources/activate/{source_id}")
 def activate_source(source_id: str):
     global active_source_id
-    with get_db() as conn:
+    with _local_db() as conn:
         # Verify source exists
         exists = conn.execute("SELECT 1 FROM data_sources WHERE source_id=?", (source_id,)).fetchone()
         if not exists:
@@ -1038,6 +1170,96 @@ def activate_source(source_id: str):
         conn.execute("UPDATE data_sources SET is_active = 1 WHERE source_id = ?", (source_id,))
     active_source_id = source_id
     return {"status": "ok", "active_source_id": source_id}
+
+
+# ── GET /data/snowflake-connections ──────────────────────────────────────────
+
+@app.get("/data/snowflake-connections")
+def list_sf_connections():
+    with _local_db() as conn:
+        rows = conn.execute("SELECT * FROM snowflake_connections ORDER BY created_at").fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── POST /data/snowflake-connections ─────────────────────────────────────────
+
+@app.post("/data/snowflake-connections", status_code=201)
+def add_sf_connection(body: dict[str, Any]):
+    label    = body.get("label", "").strip()
+    database = body.get("database", "").strip().upper()
+    schema   = body.get("schema", "NBA").strip().upper()
+    warehouse= body.get("warehouse", "COMPUTE_WH").strip().upper()
+    if not label or not database:
+        raise HTTPException(status_code=400, detail="label and database are required")
+
+    # Test the connection first
+    try:
+        from db_adapter import _SnowflakeConn
+        test_conn = _SnowflakeConn(database=database, schema=schema, warehouse=warehouse)
+        test_conn.execute(f"SELECT COUNT(*) FROM {database}.{schema}.FACT_MEMBER_GAP").fetchone()
+        test_conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Connection test failed: {str(e)[:300]}")
+
+    import uuid, datetime
+    conn_id = f"sf_{uuid.uuid4().hex[:8]}"
+    created = datetime.datetime.utcnow().isoformat()
+    with _local_db() as conn:
+        conn.execute(
+            "INSERT INTO snowflake_connections (conn_id,label,sf_database,sf_schema,sf_warehouse,is_active,created_at) VALUES (?,?,?,?,?,0,?)",
+            (conn_id, label, database, schema, warehouse, created)
+        )
+    return {"status": "ok", "conn_id": conn_id, "label": label}
+
+
+# ── POST /data/snowflake-connections/test ─────────────────────────────────────
+
+@app.post("/data/snowflake-connections/test")
+def test_sf_connection(body: dict[str, Any]):
+    database = body.get("database", "").strip().upper()
+    schema   = body.get("schema", "NBA").strip().upper()
+    warehouse= body.get("warehouse", "COMPUTE_WH").strip().upper()
+    if not database:
+        raise HTTPException(status_code=400, detail="database is required")
+    try:
+        from db_adapter import _SnowflakeConn
+        test_conn = _SnowflakeConn(database=database, schema=schema, warehouse=warehouse)
+        row = test_conn.execute(f"SELECT COUNT(*) AS n FROM {database}.{schema}.FACT_MEMBER_GAP").fetchone()
+        gap_count = row["n"] if row else 0
+        test_conn.close()
+        return {"status": "ok", "gap_count": gap_count, "database": database, "schema": schema}
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Connection failed: {str(e)[:300]}")
+
+
+# ── POST /data/snowflake-connections/{conn_id}/activate ──────────────────────
+
+@app.post("/data/snowflake-connections/{conn_id}/activate")
+def activate_sf_connection(conn_id: str):
+    global _active_sf_conn
+    with _local_db() as conn:
+        row = conn.execute("SELECT * FROM snowflake_connections WHERE conn_id=?", (conn_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Snowflake connection '{conn_id}' not found")
+        conn.execute("UPDATE snowflake_connections SET is_active=0")
+        conn.execute("UPDATE snowflake_connections SET is_active=1 WHERE conn_id=?", (conn_id,))
+        _active_sf_conn = dict(row)
+    # Switch runtime mode to snowflake using this connection's db/schema
+    from db_adapter import set_runtime_mode
+    set_runtime_mode("snowflake")
+    return {"status": "ok", "conn_id": conn_id, "label": dict(row)["label"],
+            "database": dict(row)["sf_database"], "schema": dict(row)["sf_schema"]}
+
+
+# ── DELETE /data/snowflake-connections/{conn_id} ──────────────────────────────
+
+@app.delete("/data/snowflake-connections/{conn_id}")
+def delete_sf_connection(conn_id: str):
+    if conn_id == "sf_default":
+        raise HTTPException(status_code=400, detail="Cannot delete the default Snowflake connection")
+    with _local_db() as conn:
+        conn.execute("DELETE FROM snowflake_connections WHERE conn_id=?", (conn_id,))
+    return {"status": "ok"}
 
 
 # ── DELETE /data/sources/{source_id} ─────────────────────────────────────────
@@ -1570,8 +1792,7 @@ def get_member_propensity(member_key: str):
 
 @app.get("/members")
 def get_members():
-    src = active_source_id
-    src_filter = "(m.source_id = 'demo' OR m.source_id IS NULL)" if src == "demo" else f"m.source_id = '{src}'"
+    src_filter, _ = _src_filters("m", "m")
     with get_db() as conn:
         rows = conn.execute(f"""
             SELECT m.*, c.email_allowed, c.sms_allowed, c.call_allowed,
@@ -1587,12 +1808,13 @@ def get_members():
 
 @app.get("/gaps")
 def get_gaps():
-    src = active_source_id
-    src_filter = "(source_id = 'demo' OR source_id IS NULL)" if src == "demo" else f"source_id = '{src}'"
+    src_filter, _ = _src_filters("g", "g")
+    # strip alias prefix for unaliased query
+    sf = src_filter.replace("g.", "") if src_filter != "1=1" else "1=1"
     with get_db() as conn:
         rows = conn.execute(f"""
             SELECT * FROM fact_member_gap
-            WHERE LOWER(is_suppressed) != 'true' AND {src_filter}
+            WHERE LOWER(is_suppressed) != 'true' AND {sf}
         """).fetchall()
     return rows_as_dicts(rows)
 
@@ -1602,8 +1824,7 @@ def get_gaps():
 @app.get("/gaps/{measure_key}/{plan_key}")
 def get_gaps_by_measure_plan(measure_key: str, plan_key: str):
     """Return up to 250 open/borderline gaps for a measure×plan, joined with member + channel data."""
-    src = active_source_id
-    src_gap = "(g.source_id = 'demo' OR g.source_id IS NULL)" if src == "demo" else f"g.source_id = '{src}'"
+    src_gap, _ = _src_filters("g", "p")
     with get_db() as conn:
         rows = conn.execute(f"""
             SELECT g.*,
@@ -1627,11 +1848,72 @@ def get_gaps_by_measure_plan(measure_key: str, plan_key: str):
 
 # ── POST /session/{run_id}/decision ───────────────────────────────────────────
 
+def _coerce_decision_row(row: dict) -> dict:
+    """Coerce bool-like string fields to int (1/0) for Snowflake NUMBER columns."""
+    for key in ("is_in_selected_opportunity",):
+        if key in row:
+            v = row[key]
+            if isinstance(v, str):
+                row[key] = 1 if v.lower() == "true" else 0
+            elif isinstance(v, bool):
+                row[key] = 1 if v else 0
+    return row
+
+
+def _norm_decision(row: dict) -> dict:
+    """No column renames needed for fact_nba_claude_decision; just coerce booleans."""
+    _coerce_decision_row(row)
+    return row
+
+
+def _norm_campaign(row: dict) -> dict:
+    """Map SQLite column names → Snowflake column names for dim_nba_campaign."""
+    if _is_snowflake():
+        # SQLite uses message_template_id; Snowflake uses message_template
+        if "message_template_id" in row:
+            row["message_template"] = row.pop("message_template_id")
+        # Remove campaign_name if not a Snowflake column (it's not in SF schema)
+        row.pop("campaign_name", None)
+    return row
+
+
+def _norm_outreach(row: dict) -> dict:
+    """Map SQLite column names → Snowflake column names for fact_nba_outreach_plan."""
+    if _is_snowflake():
+        # SQLite: contact_id; Snowflake: outreach_id
+        if "contact_id" in row:
+            row["outreach_id"] = row.pop("contact_id")
+        # SQLite: message_template_id; Snowflake: message_template
+        if "message_template_id" in row:
+            row["message_template"] = row.pop("message_template_id")
+        # planned_datetime may be a string; Snowflake TIMESTAMP_NTZ accepts ISO strings
+    return row
+
+
+def _norm_trace(row: dict, run_id: str) -> dict:
+    """Map SQLite column names → Snowflake column names for fact_nba_trace."""
+    if _is_snowflake():
+        # SQLite: agent, step; Snowflake: agent_mode, agent_step
+        if "agent" in row:
+            row["agent_mode"] = row.pop("agent")
+        if "step" in row:
+            row["agent_step"] = row.pop("step")
+        # SQLite: timestamp; Snowflake: created_at (auto-set by DB, drop it)
+        row.pop("timestamp", None)
+        # Snowflake requires trace_id PRIMARY KEY — generate one if absent
+        if "trace_id" not in row:
+            import uuid
+            row["trace_id"] = f"TR_{run_id}_{uuid.uuid4().hex[:8]}"
+    return row
+
+
 @app.post("/session/{run_id}/decision", status_code=201)
 def post_decision(run_id: str, body: dict[str, Any]):
     body["nba_run_id"] = run_id
+    _norm_decision(body)
     cols = list(body.keys())
-    sql = f"""INSERT OR REPLACE INTO fact_nba_claude_decision
+    _insert = "INSERT" if _is_snowflake() else "INSERT OR REPLACE"
+    sql = f"""{_insert} INTO fact_nba_claude_decision
               ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"""
     with get_db() as conn:
         conn.execute(sql, list(body.values()))
@@ -1646,8 +1928,10 @@ def post_decisions_bulk(run_id: str, body: list[dict[str, Any]]):
         return {"status": "ok", "inserted": 0}
     for row in body:
         row["nba_run_id"] = run_id
+        _norm_decision(row)
     cols = list(body[0].keys())
-    sql = f"""INSERT OR REPLACE INTO fact_nba_claude_decision
+    _insert = "INSERT" if _is_snowflake() else "INSERT OR REPLACE"
+    sql = f"""{_insert} INTO fact_nba_claude_decision
               ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"""
     with get_db() as conn:
         conn.executemany(sql, [[r[c] for c in cols] for r in body])
@@ -1659,8 +1943,10 @@ def post_decisions_bulk(run_id: str, body: list[dict[str, Any]]):
 @app.post("/session/{run_id}/campaign", status_code=201)
 def post_campaign(run_id: str, body: dict[str, Any]):
     body["nba_run_id"] = run_id
+    _norm_campaign(body)
     cols = list(body.keys())
-    sql = f"""INSERT OR REPLACE INTO dim_nba_campaign
+    _insert = "INSERT" if _is_snowflake() else "INSERT OR REPLACE"
+    sql = f"""{_insert} INTO dim_nba_campaign
               ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"""
     with get_db() as conn:
         conn.execute(sql, list(body.values()))
@@ -1675,8 +1961,10 @@ def post_outreach(run_id: str, body: list[dict[str, Any]]):
         return {"status": "ok", "inserted": 0}
     for row in body:
         row["nba_run_id"] = run_id
+        _norm_outreach(row)
     cols = list(body[0].keys())
-    sql = f"""INSERT OR REPLACE INTO fact_nba_outreach_plan
+    _insert = "INSERT" if _is_snowflake() else "INSERT OR REPLACE"
+    sql = f"""{_insert} INTO fact_nba_outreach_plan
               ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"""
     with get_db() as conn:
         conn.executemany(sql, [[r[c] for c in cols] for r in body])
@@ -1688,6 +1976,7 @@ def post_outreach(run_id: str, body: list[dict[str, Any]]):
 @app.post("/session/{run_id}/trace", status_code=201)
 def post_trace(run_id: str, body: dict[str, Any]):
     body["nba_run_id"] = run_id
+    _norm_trace(body, run_id)
     cols = list(body.keys())
     sql = f"""INSERT INTO fact_nba_trace
               ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"""
@@ -1701,45 +1990,59 @@ def post_trace(run_id: str, body: dict[str, Any]):
 @app.get("/sessions")
 def list_sessions():
     with get_db() as conn:
-        run_ids = [r[0] for r in conn.execute(
-            "SELECT DISTINCT nba_run_id FROM fact_nba_trace ORDER BY timestamp DESC"
-        ).fetchall()]
+        # SQLite uses 'timestamp'; Snowflake uses 'created_at'
+        _ts = "created_at" if _is_snowflake() else "timestamp"
+        try:
+            run_ids = [r[0] for r in conn.execute(
+                f"SELECT DISTINCT nba_run_id FROM fact_nba_trace ORDER BY {_ts} DESC"
+            ).fetchall()]
+        except Exception:
+            run_ids = [r[0] for r in conn.execute(
+                "SELECT DISTINCT nba_run_id FROM fact_nba_trace"
+            ).fetchall()]
         sessions = []
         for run_id in run_ids:
-            # Get measure/plan from decisions table
-            dec = conn.execute(
-                "SELECT measure_key, plan_key, COUNT(*) as cnt FROM fact_nba_claude_decision WHERE nba_run_id=? LIMIT 1",
-                (run_id,)
-            ).fetchone()
-            # Get last trace step for completion time
-            last_trace = conn.execute(
-                "SELECT step, timestamp, affected_population_count FROM fact_nba_trace WHERE nba_run_id=? ORDER BY timestamp DESC LIMIT 1",
-                (run_id,)
-            ).fetchone()
-            started = conn.execute(
-                "SELECT MIN(timestamp) FROM fact_nba_trace WHERE nba_run_id=?", (run_id,)
-            ).fetchone()
-            # Check campaign for plan/measure name
-            camp = conn.execute(
-                "SELECT measure_key, plan_key FROM dim_nba_campaign WHERE nba_run_id=? LIMIT 1", (run_id,)
-            ).fetchone()
-            mk = (dec and dec[0]) or (camp and camp[0]) or ""
-            pk = (dec and dec[1]) or (camp and camp[1]) or ""
-            # Look up names
-            plan_name = conn.execute("SELECT plan_name FROM dim_plan_contract WHERE plan_key=? LIMIT 1", (pk,)).fetchone()
-            measure_name = conn.execute("SELECT measure_code FROM dim_measure WHERE measure_key=? LIMIT 1", (mk,)).fetchone()
-            sessions.append({
-                "nba_run_id": run_id,
-                "run_id": run_id,
-                "measure_key": mk,
-                "plan_key": pk,
-                "measure_code": (measure_name and measure_name[0]) or mk,
-                "plan_name": (plan_name and plan_name[0]) or pk,
-                "opportunity": f"{(measure_name and measure_name[0]) or mk} × {(plan_name and plan_name[0]) or pk}",
-                "decision_count": (dec and dec[2]) or 0,
-                "gaps_targeted": (last_trace and last_trace[2]) or (dec and dec[2]) or 0,
-                "completed_at": (last_trace and last_trace[1]) or (started and started[0]) or "",
-            })
+            try:
+                # Get measure/plan from decisions table
+                dec = conn.execute(
+                    "SELECT measure_key, plan_key, COUNT(*) as cnt FROM fact_nba_claude_decision WHERE nba_run_id=? LIMIT 1",
+                    (run_id,)
+                ).fetchone()
+                # Get last trace step for completion time
+                try:
+                    last_trace = conn.execute(
+                        f"SELECT step, {_ts}, affected_population_count FROM fact_nba_trace WHERE nba_run_id=? ORDER BY {_ts} DESC LIMIT 1",
+                        (run_id,)
+                    ).fetchone()
+                    started = conn.execute(
+                        f"SELECT MIN({_ts}) FROM fact_nba_trace WHERE nba_run_id=?", (run_id,)
+                    ).fetchone()
+                except Exception:
+                    last_trace = None
+                    started = None
+                # Check campaign for plan/measure name
+                camp = conn.execute(
+                    "SELECT measure_key, plan_key FROM dim_nba_campaign WHERE nba_run_id=? LIMIT 1", (run_id,)
+                ).fetchone()
+                mk = (dec and dec[0]) or (camp and camp[0]) or ""
+                pk = (dec and dec[1]) or (camp and camp[1]) or ""
+                # Look up names
+                plan_name = conn.execute("SELECT plan_name FROM dim_plan_contract WHERE plan_key=? LIMIT 1", (pk,)).fetchone()
+                measure_name = conn.execute("SELECT measure_code FROM dim_measure WHERE measure_key=? LIMIT 1", (mk,)).fetchone()
+                sessions.append({
+                    "nba_run_id": run_id,
+                    "run_id": run_id,
+                    "measure_key": mk,
+                    "plan_key": pk,
+                    "measure_code": (measure_name and measure_name[0]) or mk,
+                    "plan_name": (plan_name and plan_name[0]) or pk,
+                    "opportunity": f"{(measure_name and measure_name[0]) or mk} × {(plan_name and plan_name[0]) or pk}",
+                    "decision_count": (dec and dec[2]) or 0,
+                    "gaps_targeted": (last_trace and last_trace[2]) or (dec and dec[2]) or 0,
+                    "completed_at": (last_trace and last_trace[1]) or (started and started[0]) or "",
+                })
+            except Exception:
+                sessions.append({"nba_run_id": run_id, "run_id": run_id})
     return sessions
 
 
@@ -1748,12 +2051,13 @@ def list_sessions():
 @app.get("/session/{run_id}/status")
 def get_session_status(run_id: str):
     with get_db() as conn:
+        # LIMIT large tables to avoid multi-MB S3 result batches from Snowflake
         decisions = rows_as_dicts(conn.execute(
-            "SELECT * FROM fact_nba_claude_decision WHERE nba_run_id = ?", (run_id,)).fetchall())
+            "SELECT * FROM fact_nba_claude_decision WHERE nba_run_id = ? LIMIT 500", (run_id,)).fetchall())
         campaigns = rows_as_dicts(conn.execute(
             "SELECT * FROM dim_nba_campaign WHERE nba_run_id = ?", (run_id,)).fetchall())
         outreach = rows_as_dicts(conn.execute(
-            "SELECT * FROM fact_nba_outreach_plan WHERE nba_run_id = ?", (run_id,)).fetchall())
+            "SELECT * FROM fact_nba_outreach_plan WHERE nba_run_id = ? LIMIT 500", (run_id,)).fetchall())
         trace = rows_as_dicts(conn.execute(
             "SELECT * FROM fact_nba_trace WHERE nba_run_id = ?", (run_id,)).fetchall())
     return {"decisions": decisions, "campaigns": campaigns, "outreach": outreach, "trace": trace}
@@ -1764,9 +2068,15 @@ def get_session_status(run_id: str):
 @app.get("/session/latest")
 def get_latest_session():
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT nba_run_id FROM fact_nba_trace ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
+        # SQLite uses 'timestamp'; Snowflake uses 'created_at' — try both
+        try:
+            row = conn.execute(
+                "SELECT nba_run_id FROM fact_nba_trace ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+        except Exception:
+            row = conn.execute(
+                "SELECT nba_run_id FROM fact_nba_trace ORDER BY timestamp DESC LIMIT 1"
+            ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="No sessions found")
         run_id = row["nba_run_id"]
@@ -2726,33 +3036,36 @@ def _run_evaluation(run_id: str) -> dict:
 
 @app.get("/evaluate/all")
 def get_all_evaluations():
-    src = active_source_id
-    # Filter uses unaliased column in subquery, aliased in outer
-    src_filter_outer = "(ce.source_id='demo' OR ce.source_id IS NULL)" if src == "demo" else f"ce.source_id='{src}'"
-    src_filter_inner = "(source_id='demo' OR source_id IS NULL)" if src == "demo" else f"source_id='{src}'"
-    with get_db() as conn:
-        # Backfill source_id for legacy rows that have none
-        conn.execute("UPDATE campaign_evaluations SET source_id='demo' WHERE source_id IS NULL OR source_id=''")
-        rows = conn.execute(
-            f"""SELECT ce.* FROM campaign_evaluations ce
-               INNER JOIN (
-                   SELECT nba_run_id, MAX(created_timestamp) AS latest
-                   FROM campaign_evaluations
-                   WHERE {src_filter_inner}
-                   GROUP BY nba_run_id
-               ) best ON ce.nba_run_id = best.nba_run_id
-                      AND ce.created_timestamp = best.latest
-               WHERE {src_filter_outer}
-               ORDER BY ce.evaluation_date DESC, ce.nba_run_id"""
-        ).fetchall()
-        total_campaigns = len(rows)
-        on_track = sum(1 for r in rows if r["performance_status"] == "On Track")
-        under    = sum(1 for r in rows if r["performance_status"] == "Underperforming")
-        over     = sum(1 for r in rows if r["performance_status"] == "Overperforming")
-        total_members = sum(r["total_members_contacted"] or 0 for r in rows)
-        total_closed  = sum(r["gaps_closed_actual"] or 0 for r in rows)
-        stars_actual  = round(sum(r["stars_impact_actual"] or 0 for r in rows), 2)
-        stars_proj    = round(sum(r["stars_impact_projected"] or 0 for r in rows), 2)
+    sf_outer, _ = _src_filters("ce", "ce")
+    sf_inner = sf_outer.replace("ce.", "") if sf_outer != "1=1" else "1=1"
+    rows = []
+    try:
+        with get_db() as conn:
+            # Backfill source_id for legacy rows — SQLite only (safe no-op on Snowflake)
+            if not _is_snowflake():
+                conn.execute("UPDATE campaign_evaluations SET source_id='demo' WHERE source_id IS NULL OR source_id=''")
+            rows = conn.execute(
+                f"""SELECT ce.* FROM campaign_evaluations ce
+                   INNER JOIN (
+                       SELECT nba_run_id, MAX(created_timestamp) AS latest
+                       FROM campaign_evaluations
+                       WHERE {sf_inner}
+                       GROUP BY nba_run_id
+                   ) best ON ce.nba_run_id = best.nba_run_id
+                          AND ce.created_timestamp = best.latest
+                   WHERE {sf_outer}
+                   ORDER BY ce.evaluation_date DESC, ce.nba_run_id"""
+            ).fetchall()
+    except Exception:
+        rows = []
+    total_campaigns = len(rows)
+    on_track = sum(1 for r in rows if r["performance_status"] == "On Track")
+    under    = sum(1 for r in rows if r["performance_status"] == "Underperforming")
+    over     = sum(1 for r in rows if r["performance_status"] == "Overperforming")
+    total_members = sum(r["total_members_contacted"] or 0 for r in rows)
+    total_closed  = sum(r["gaps_closed_actual"] or 0 for r in rows)
+    stars_actual  = round(sum(r["stars_impact_actual"] or 0 for r in rows), 2)
+    stars_proj    = round(sum(r["stars_impact_projected"] or 0 for r in rows), 2)
     return {
         "portfolio_summary": {
             "total_campaigns_evaluated": total_campaigns,
@@ -2796,13 +3109,17 @@ def schedule_evaluation(run_id: str):
 @app.get("/evaluate/schedule/due")
 def get_due_evaluations():
     today_s = str(date.today())
-    with get_db() as conn:
-        rows = conn.execute(
-            """SELECT * FROM evaluation_schedule
-               WHERE scheduled_date <= ? AND status = 'PENDING'
-               ORDER BY scheduled_date""",
-            (today_s,)
-        ).fetchall()
+    rows = []
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                """SELECT * FROM evaluation_schedule
+                   WHERE scheduled_date <= ? AND status = 'PENDING'
+                   ORDER BY scheduled_date""",
+                (today_s,)
+            ).fetchall()
+    except Exception:
+        pass  # evaluation_schedule doesn't exist in Snowflake
     return {"due_count": len(rows), "due_evaluations": [dict(r) for r in rows]}
 
 
@@ -2956,12 +3273,16 @@ def _auto_eval_loop():
         _eval_logger.info("Auto-evaluation scheduler running — checking for due evaluations")
         try:
             today_s = str(date.today())
-            with get_db() as conn:
-                due = conn.execute(
-                    """SELECT DISTINCT nba_run_id FROM evaluation_schedule
-                       WHERE scheduled_date <= ? AND status = 'PENDING'""",
-                    (today_s,)
-                ).fetchall()
+            due = []
+            try:
+                with get_db() as conn:
+                    due = conn.execute(
+                        """SELECT DISTINCT nba_run_id FROM evaluation_schedule
+                           WHERE scheduled_date <= ? AND status = 'PENDING'""",
+                        (today_s,)
+                    ).fetchall()
+            except Exception:
+                pass  # evaluation_schedule doesn't exist in Snowflake
             for row in due:
                 try:
                     _run_evaluation(row["nba_run_id"])
@@ -4088,15 +4409,38 @@ def datasource_mode_get():
 
 @app.post("/datasource/mode")
 def datasource_mode_set(body: dict):
-    """Switch DB backend at runtime. body: {mode: 'sqlite'|'snowflake'|'auto'}"""
+    """Switch DB backend at runtime AND persist to .env. body: {mode: 'sqlite'|'snowflake'|'auto'}"""
     requested = body.get("mode", "auto")
     try:
         from db_adapter import set_runtime_mode, get_current_mode, snowflake_configured
         active = set_runtime_mode(requested)
+
+        # --- Persist to .env so the setting survives restarts ---
+        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        try:
+            if os.path.exists(env_path):
+                lines = open(env_path).read().splitlines()
+                new_lines = []
+                found = False
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped.startswith("DB_MODE") and ("=" in stripped):
+                        new_lines.append(f"DB_MODE={active}")
+                        found = True
+                    else:
+                        new_lines.append(line)
+                if not found:
+                    new_lines.append(f"DB_MODE={active}")
+                with open(env_path, "w") as f:
+                    f.write("\n".join(new_lines) + "\n")
+        except Exception:
+            pass  # .env write failure is non-fatal — runtime switch already applied
+
         return {
             "mode": active,
             "snowflake_configured": snowflake_configured(),
             "label": "❄️ Snowflake" if active == "snowflake" else "🗃️ Demo Data (SQLite)",
+            "persisted": True,
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

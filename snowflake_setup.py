@@ -44,26 +44,45 @@ def get_conn():
         print("  Run:  pip install snowflake-connector-python")
         sys.exit(1)
 
-    cfg = dict(
-        account=sf_env("SNOWFLAKE_ACCOUNT"),
-        user=sf_env("SNOWFLAKE_USER"),
-        password=sf_env("SNOWFLAKE_PASSWORD"),
-        warehouse=sf_env("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
-    )
-    missing = [k for k, v in cfg.items() if not v]
-    if missing:
-        print(f"ERROR: Missing env vars: {', '.join(f'SNOWFLAKE_{k.upper()}' for k in missing)}")
-        print("Copy .env.example to .env and fill in your Snowflake credentials.")
+    account  = sf_env("SNOWFLAKE_ACCOUNT")
+    user     = sf_env("SNOWFLAKE_USER")
+    warehouse= sf_env("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
+    key_path = sf_env("SNOWFLAKE_PRIVATE_KEY_PATH", "")
+
+    if not account or not user:
+        print("ERROR: SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER must be set in .env")
         sys.exit(1)
 
-    print(f"Connecting to Snowflake account={cfg['account']} user={cfg['user']}...")
+    cfg = dict(account=account, user=user, warehouse=warehouse)
+
+    # Prefer key-pair auth; fall back to password
+    resolved_key = key_path if os.path.isabs(key_path) else str(ROOT / key_path)
+    if key_path and os.path.exists(resolved_key):
+        from cryptography.hazmat.primitives.serialization import (
+            load_pem_private_key, Encoding, PrivateFormat, NoEncryption
+        )
+        with open(resolved_key, "rb") as f:
+            priv = load_pem_private_key(f.read(), password=None)
+        cfg["private_key"] = priv.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+        print(f"Using key-pair auth  ({resolved_key})")
+    else:
+        password = sf_env("SNOWFLAKE_PASSWORD", "")
+        if not password:
+            print("ERROR: Neither SNOWFLAKE_PRIVATE_KEY_PATH nor SNOWFLAKE_PASSWORD set in .env")
+            sys.exit(1)
+        cfg["password"] = password
+        print("Using password auth")
+
+    print(f"Connecting to Snowflake account={account} user={user}...")
     conn = sf.connect(**cfg)
     return conn
 
 DDL = """
+USE WAREHOUSE COMPUTE_WH;
 CREATE DATABASE IF NOT EXISTS CAREINTEL;
-CREATE SCHEMA IF NOT EXISTS CAREINTEL.NBA;
-USE SCHEMA CAREINTEL.NBA;
+USE DATABASE CAREINTEL;
+CREATE SCHEMA IF NOT EXISTS NBA;
+USE SCHEMA NBA;
 
 CREATE TABLE IF NOT EXISTS dim_measure (
     measure_key VARCHAR(20) PRIMARY KEY, measure_code VARCHAR(10),
@@ -141,7 +160,7 @@ CREATE TABLE IF NOT EXISTS fact_nba_trace (
 """
 
 TABLE_FILES = {
-    "dim_measure":             None,             # seeded by api startup
+    "dim_measure":             "input/dim_measure.csv",
     "dim_plan_contract":       "input/dim_plan_contract.csv",
     "dim_member":              "input/dim_member.csv",
     "dim_member_channel_pref": "input/dim_member_channel_pref.csv",
@@ -181,17 +200,20 @@ def upload_csv(cur, table: str, csv_path: str, dry_run: bool):
     cols = list(rows[0].keys())
     placeholders = ", ".join(["%s"] * len(cols))
     col_list = ", ".join(cols)
-    sql = f"INSERT OR REPLACE INTO {table} ({col_list}) VALUES ({placeholders})"
+    insert_sql = f"INSERT INTO {table} ({col_list}) VALUES ({placeholders})"
     if dry_run:
         print(f"  DRY-RUN {table}: would insert {len(rows):,} rows")
         return len(rows)
+    # Truncate first so re-runs don't duplicate rows
+    cur.execute(f"TRUNCATE TABLE IF EXISTS {table}")
     # Batch 5,000 rows at a time
     BATCH = 5000
     total = 0
     for i in range(0, len(rows), BATCH):
         batch = rows[i:i+BATCH]
-        data  = [[r.get(c) for c in cols] for r in batch]
-        cur.executemany(f"INSERT OR REPLACE INTO {table} ({col_list}) VALUES ({placeholders})", data)
+        # Convert empty strings to None — Snowflake rejects '' for DATE/NUMBER cols
+        data  = [[None if (r.get(c) == '' or r.get(c) is None) else r.get(c) for c in cols] for r in batch]
+        cur.executemany(insert_sql, data)
         total += len(data)
         print(f"  {table}: {total:,}/{len(rows):,}…", end="\r")
     print(f"  {table}: {total:,} rows loaded    ")
@@ -225,9 +247,10 @@ def main():
             upload_csv(cur, table, path, dry_run=False)
 
     print("\n── Seeding plan_population…")
+    cur.execute("TRUNCATE TABLE IF EXISTS plan_population")
     for row in PLAN_POP:
         cur.execute(
-            "INSERT OR REPLACE INTO plan_population "
+            "INSERT INTO plan_population "
             "(plan_key, total_members, plan_revenue, last_updated) VALUES (%s,%s,%s,%s)",
             row
         )
@@ -240,6 +263,7 @@ def main():
     print("\n── Verifying row counts…")
     conn2 = get_conn()
     cur2  = conn2.cursor()
+    cur2.execute("USE WAREHOUSE COMPUTE_WH")
     cur2.execute("USE SCHEMA CAREINTEL.NBA")
     for table in ["dim_member","fact_member_gap","dim_plan_contract","plan_population"]:
         cur2.execute(f"SELECT COUNT(*) FROM {table}")

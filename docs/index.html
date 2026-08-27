@@ -520,13 +520,6 @@ details.opp-top-card:not([open])>summary{border-bottom:none;border-radius:12px}
     <button class="nav-tab" data-action="switch-tab" data-val="data">Data Sources</button>
   </div>
   <div class="nav-right">
-    <!-- Data Source Toggle -->
-    <div id="ds-toggle" onclick="toggleDataSource()" title="Click to switch data source"
-      style="display:flex;align-items:center;gap:.4rem;padding:.3rem .7rem;border-radius:999px;cursor:pointer;font-size:.72rem;font-weight:700;letter-spacing:.03em;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;transition:background .2s;white-space:nowrap;user-select:none">
-      <span id="ds-icon">🗃️</span>
-      <span id="ds-label">Demo Data</span>
-      <span style="opacity:.6;font-size:.65rem;margin-left:.15rem">▼</span>
-    </div>
     <div class="history-wrap" id="history-wrap">
       <button class="history-btn" data-action="toggle-history">Sessions ▾</button>
     </div>
@@ -650,22 +643,26 @@ async function loadDataSourceMode(){
   try{
     const d=await apiGet('/datasource/mode');
     _dsMode=d.mode||'sqlite';
+    // Also fetch active upload source name for the label
+    try{
+      const sources=await apiGet('/data/sources');
+      const active=(sources||[]).find(s=>s.is_active&&s.source_id!=='demo');
+      d._activeUpload=active?active.source_name:null;
+    }catch(e){}
     _updateDsUI(d);
   }catch(e){}
 }
 
 function _updateDsUI(d){
-  const icon=document.getElementById('ds-icon');
-  const lbl=document.getElementById('ds-label');
-  const tog=document.getElementById('ds-toggle');
-  if(!icon||!lbl||!tog)return;
-  const isSf=(d.mode||_dsMode)==='snowflake';
-  icon.textContent=isSf?'❄️':'🗃️';
-  lbl.textContent=isSf?'Snowflake':'Demo Data';
-  tog.title=isSf?'Live Snowflake — click to switch to SQLite demo data'
-                :'SQLite demo data — click to switch to Snowflake';
-  tog.style.background=isSf?'rgba(56,189,248,.25)':'rgba(255,255,255,.1)';
-  tog.style.borderColor=isSf?'rgba(56,189,248,.5)':'rgba(255,255,255,.25)';
+  // Update nav source indicator (replaces the removed ds-toggle pill)
+  const ind=document.getElementById('nav-source-indicator');
+  const mode=d.mode||_dsMode;
+  const isSf=mode==='snowflake';
+  if(ind){
+    if(isSf) ind.textContent='● Snowflake';
+    else if(d._activeUpload) ind.textContent=`● ${d._activeUpload}`;
+    else ind.textContent='● Demo Data';
+  }
 }
 
 async function toggleDataSource(){
@@ -680,13 +677,77 @@ async function toggleDataSource(){
     }).then(r=>{if(!r.ok)return r.json().then(e=>{throw new Error(e.detail||'Switch failed')});return r.json();});
     _dsMode=d.mode;
     _updateDsUI(d);
-    showToast(`Switched to ${d.label}`,'info');
+    const persistNote=d.persisted?' (saved to .env)':'';
+    _aiToast(`Switched to ${d.label}${persistNote}`, false);
     // Reload opportunity data for the new source
-    if(typeof refreshOpportunities==='function') refreshOpportunities();
+    if(typeof refreshOpportunities==='function') await refreshOpportunities();
   }catch(e){
-    showToast('⚠️ '+e.message,'error');
+    _aiToast('⚠️ '+e.message, true);
   }finally{
     if(tog){tog.style.opacity='1';tog.style.pointerEvents='';}
+  }
+}
+
+function dsShowExcelFormat() {
+  const guide = document.getElementById('ds-excel-guide');
+  if (guide) { guide.style.display = guide.style.display === 'none' ? 'block' : 'none'; }
+}
+
+/* ── Data Source Backend Switcher (Data Sources tab) ──────────────── */
+async function dsSetBackend(mode){
+  const btn=document.getElementById('ds-sf-btn');
+  if(btn){btn.disabled=true;btn.textContent='Switching…';}
+  try{
+    const d=await fetch('/datasource/mode',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode})
+    }).then(async r=>{
+      if(!r.ok){
+        let msg=`Server error ${r.status}`;
+        try{const e=await r.json();msg=e.detail||msg;}catch{}
+        throw new Error(msg);
+      }
+      return r.json();
+    });
+    _dsMode=d.mode;
+    _updateDsUI(d);
+    _aiToast(`Switched to ${d.label}${d.persisted?' (saved)':''}`, false);
+    // Force-refresh source data so the re-render has accurate active flags
+    DS.status=null; DS.sources=[];
+    await Promise.all([loadDataStatus(), loadSources()]);
+    renderDataSources();
+    if(typeof refreshOpportunities==='function') refreshOpportunities();
+  }catch(e){
+    _aiToast('⚠️ '+e.message, true);
+    if(btn){btn.disabled=false;btn.textContent=mode==='snowflake'?'Connect':'Switch Here';}
+  }
+}
+
+/* ── Activate Demo (SQLite built-in) source ───────────────────────── */
+async function dsActivateDemo(){
+  try{
+    // If on Snowflake, switch backend to SQLite first
+    if(_dsMode==='snowflake'){
+      const d=await fetch('/datasource/mode',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:'{"mode":"sqlite"}'
+      }).then(async r=>{
+        if(!r.ok){let msg=`Error ${r.status}`;try{const e=await r.json();msg=e.detail||msg;}catch{}throw new Error(msg);}
+        return r.json();
+      });
+      _dsMode=d.mode;
+      _updateDsUI(d);
+    }
+    // Mark 'demo' as the active source in the DB
+    await fetch(`${API}/data/sources/activate/demo`,{method:'POST'});
+    DS.status=null; DS.sources=[];
+    await Promise.all([loadDataStatus(), loadSources()]);
+    renderDataSources();
+    _aiToast('Switched to Demo Database (SQLite)', false);
+    if(typeof refreshOpportunities==='function') refreshOpportunities();
+  }catch(e){
+    _aiToast('⚠️ '+e.message, true);
   }
 }
 
@@ -734,6 +795,7 @@ async function runAiAnalysis(measureKey,planKey){
       delete _activeAnalyses[key];
       sessionStorage.setItem('nba_filterPlan',S.filterPlan||'');
       sessionStorage.setItem('nba_analysisKey',key);
+      sessionStorage.setItem('nba_analysisCached','1');
       sessionStorage.setItem('nba_tab','opp');
       if(S.oppBudget&&S.oppBudget!==50000)sessionStorage.setItem('nba_oppBudget',String(S.oppBudget));
       window.location.reload();
@@ -3904,7 +3966,9 @@ loadData().then(loadLatestSession).then(()=>{
   const _savedBudget=sessionStorage.getItem('nba_oppBudget');
   if(_savedBudget){S.oppBudget=parseInt(_savedBudget,10);S.oppBudgetInit=true;sessionStorage.removeItem('nba_oppBudget');}
   if(S._highlightCardKey){
-    _aiToast('✓ AI analysis complete — results shown below',false);
+    const _wasCached=sessionStorage.getItem('nba_analysisCached')==='1';
+    sessionStorage.removeItem('nba_analysisCached');
+    _aiToast(_wasCached?'📋 Showing cached AI analysis (< 24 hrs old)':'✓ AI analysis complete — results shown below',false);
     // Scroll to the analyzed card after a brief delay for DOM settle
     setTimeout(()=>{
       const cardId='card-'+S._highlightCardKey.replace('_','-');
@@ -3925,6 +3989,7 @@ loadData().then(loadLatestSession).then(()=>{
 const DS = {
   status: null,
   sources: [],
+  sfConns: null,
   modalOpen: false,
   step: 1,        // 1=type, 2=template, 3=file, 4=preview, 5=import
   dataType: 'members',
@@ -3959,158 +4024,207 @@ async function loadSources() {
   } catch(e) { DS.sources = []; }
 }
 
+async function loadSfConnections() {
+  try {
+    const r = await fetch(`${API}/data/snowflake-connections`);
+    DS.sfConns = r.ok ? await r.json() : [];
+  } catch { DS.sfConns = []; }
+}
+
 async function renderDataSources() {
   const el = document.getElementById('view-data');
   if (!el) return;
   if (!DS.status) await loadDataStatus();
   if (!DS.sources.length) await loadSources();
+  if (!DS.sfConns) await loadSfConnections();
   const s = DS.status || {};
+  const sfConns = DS.sfConns || [];
 
-  // find active source
-  const activeSrc = DS.sources.find(s2=>s2.is_active) || {source_name:'CareIntel Demo Database',source_type:'sqlite',member_count:250,gap_count:s.gaps?.count||0,plan_count:5};
+  // ── Build unified source list: SQLite demo + uploaded Excels + Snowflake ──
+  const sqliteActive = _dsMode !== 'snowflake';
+  const sfActive     = _dsMode === 'snowflake';
+  const uploadedSrcs = DS.sources.filter(src => src.source_id !== 'demo');
 
-  // Update nav indicator
+  // demoActive = SQLite mode AND no uploaded Excel is currently the active source
+  const anyExcelActive = sqliteActive && uploadedSrcs.some(src => src.is_active);
+  const demoActive = sqliteActive && !anyExcelActive;
+
+  const sfAccount = 'UVWIABH-FC16241';
+  let activeLabel, activeMembers, activeGaps, activePlans, activeType, activeColor;
+  if (sfActive) {
+    activeLabel   = 'Snowflake — ' + sfAccount;
+    activeMembers = (s.members?.count||0).toLocaleString();
+    activeGaps    = (s.gaps?.count||0).toLocaleString();
+    activePlans   = (s.plans?.count||5).toLocaleString();
+    activeType    = '❄️ Snowflake';
+    activeColor   = '#1D4ED8';
+  } else {
+    const activeSrc = DS.sources.find(src=>src.is_active) || {source_name:'Demo Database',member_count:s.members?.count||0,gap_count:s.gaps?.count||0,plan_count:5};
+    activeLabel   = activeSrc.source_name;
+    activeMembers = (activeSrc.member_count||0).toLocaleString();
+    activeGaps    = (activeSrc.gap_count||0).toLocaleString();
+    activePlans   = (activeSrc.plan_count||5).toLocaleString();
+    activeType    = activeSrc.source_type === 'sqlite' ? '🗃️ SQLite' : '📊 Excel';
+    activeColor   = '#15803D';
+  }
   const ind = document.getElementById('nav-source-indicator');
-  if (ind) ind.textContent = `● ${activeSrc.source_name.replace('CareIntel ','').replace(' Database','')}`;
+  if (ind) ind.textContent = `● ${activeLabel.replace('Demo Database','Demo').replace('CareIntel ','').split('—')[0].trim()}`;
 
   el.innerHTML = `
-  <div style="max-width:1000px">
+  <div style="max-width:1020px">
 
-    <!-- Active Source Banner -->
-    <div style="background:linear-gradient(135deg,#DCFCE7,#F0FDF4);border:1.5px solid #86EFAC;border-radius:10px;padding:.75rem 1.1rem;margin-bottom:1.2rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
-      <div style="display:flex;align-items:center;gap:.6rem">
-        <span style="color:#15803D;font-size:1.1rem">●</span>
-        <span style="font-size:.88rem;font-weight:700;color:#15803D">Currently analyzing: ${activeSrc.source_name}</span>
+    <!-- ① ACTIVE DATABASE INFO STRIP -->
+    <div style="background:var(--white);border:1.5px solid var(--g200);border-radius:10px;padding:.75rem 1.1rem;margin-bottom:1.4rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem;box-shadow:var(--shadow)">
+      <div style="display:flex;align-items:center;gap:.65rem">
+        <span style="color:${activeColor};font-size:1rem">●</span>
+        <div>
+          <div style="font-size:.85rem;font-weight:700;color:var(--g900)">${activeLabel}</div>
+          <div style="font-size:.73rem;color:var(--g500);margin-top:.1rem">${activeType} · Currently active</div>
+        </div>
       </div>
-      <span style="font-size:.78rem;color:#166534">${(activeSrc.member_count||0).toLocaleString()} members · ${(activeSrc.gap_count||0).toLocaleString()}+ gaps · ${(activeSrc.plan_count||5)} plans</span>
+      <div style="display:flex;gap:1.2rem;flex-wrap:wrap">
+        <div style="text-align:center"><div style="font-size:.95rem;font-weight:700;color:var(--g900);font-variant-numeric:tabular-nums">${activeMembers}</div><div style="font-size:.67rem;color:var(--g500)">Members</div></div>
+        <div style="text-align:center"><div style="font-size:.95rem;font-weight:700;color:var(--g900);font-variant-numeric:tabular-nums">${activeGaps}</div><div style="font-size:.67rem;color:var(--g500)">Open Gaps</div></div>
+        <div style="text-align:center"><div style="font-size:.95rem;font-weight:700;color:var(--g900);font-variant-numeric:tabular-nums">${activePlans}</div><div style="font-size:.67rem;color:var(--g500)">Plans</div></div>
+        <div style="text-align:center"><div style="font-size:.95rem;font-weight:700;color:var(--g900);font-variant-numeric:tabular-nums">${(s.runs?.count||0)}</div><div style="font-size:.67rem;color:var(--g500)">NBA Runs</div></div>
+      </div>
     </div>
 
-    <!-- Source Switcher -->
+    <!-- ② CONNECTED SOURCES -->
     <div class="ds-section">
-      <div class="ds-section-title">Your Data Sources</div>
-      <div class="ds-section-sub">Switch between demo and uploaded data sources.</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.75rem;margin-top:.75rem">
-        ${(DS.sources.length ? DS.sources : [activeSrc]).map(src=>`
-        <div style="border:${src.is_active?'2px solid #86EFAC':'1px solid var(--g200)'};border-radius:var(--r);padding:.85rem 1rem;background:${src.is_active?'#F0FDF4':'var(--white)'};position:relative">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
-            <span style="font-size:.84rem;font-weight:700;color:var(--g900)">${src.source_name}</span>
-            <span style="font-size:.66rem;font-weight:600;padding:.15rem .45rem;border-radius:3px;background:${src.is_active?'#DCFCE7':'var(--g100)'};color:${src.is_active?'#15803D':'var(--g500)'}">${src.is_active?'● Active':'Inactive'}</span>
+      <div class="ds-section-title">Connected Data Sources</div>
+      <div class="ds-section-sub">Click any source to make it active. All opportunities, members, and analysis will switch instantly.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.75rem;margin-top:.75rem">
+
+        <div style="border:${demoActive?'2px solid #86EFAC':'1px solid var(--g200)'};border-radius:var(--r);padding:.9rem 1rem;background:${demoActive?'#F0FDF4':'var(--white)'};cursor:${demoActive?'default':'pointer'}" ${demoActive?'':'onclick="dsActivateDemo()"'}>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.35rem">
+            <span style="font-size:1.25rem">🗃️</span>
+            <span style="font-size:.66rem;font-weight:600;padding:.18rem .45rem;border-radius:3px;background:${demoActive?'#DCFCE7':'var(--g100)'};color:${demoActive?'#15803D':'var(--g500)'}">${demoActive?'● Active':'SQLite'}</span>
           </div>
-          <div style="font-size:.74rem;color:var(--g500);margin-bottom:.5rem">${src.source_type||'sqlite'} · ${(src.member_count||0).toLocaleString()} members · ${(src.gap_count||0).toLocaleString()} gaps</div>
-          <div style="display:flex;gap:.4rem;flex-wrap:wrap">
-            ${!src.is_active?`<button class="ds-btn" style="font-size:.72rem;padding:.25rem .6rem" onclick="dsActivateSource('${src.source_id}','${src.source_name}')">Activate</button>`:''}
-            ${src.source_id!=='demo'?`<button style="font-size:.72rem;padding:.25rem .6rem;background:var(--red-l);color:var(--red);border:1px solid #FECACA;border-radius:4px;cursor:pointer" onclick="dsDeleteSource('${src.source_id}')">🗑 Delete</button>`:''}
+          <div style="font-size:.84rem;font-weight:700;color:var(--g900);margin-bottom:.2rem">Demo Database</div>
+          <div style="font-size:.74rem;color:var(--g500);margin-bottom:.6rem">Built-in synthetic data · 26K members · 22K gaps</div>
+          ${demoActive?'<span style="font-size:.72rem;color:#15803D;font-weight:600">✓ Using this source</span>':'<button class="ds-btn" style="font-size:.72rem;padding:.28rem .65rem" onclick="event.stopPropagation();dsActivateDemo()">Switch Here</button>'}
+        </div>
+
+        <!-- Snowflake connections (one card per registered connection) -->
+        ${sfConns.length === 0
+          ? `<div style="border:1px solid var(--g200);border-radius:var(--r);padding:.9rem 1rem;background:var(--white);cursor:pointer" onclick="dsSetBackend('snowflake')">
+               <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.35rem">
+                 <span style="font-size:1.25rem">❄️</span>
+                 <span style="font-size:.66rem;font-weight:600;padding:.18rem .45rem;border-radius:3px;background:var(--g100);color:var(--g500)">Snowflake</span>
+               </div>
+               <div style="font-size:.84rem;font-weight:700;color:var(--g900);margin-bottom:.2rem">Snowflake</div>
+               <div style="font-size:.74rem;color:var(--g500);margin-bottom:.6rem">Live enterprise data</div>
+               <button id="ds-sf-btn" class="ds-btn" style="font-size:.72rem;padding:.28rem .65rem" onclick="event.stopPropagation();dsSetBackend('snowflake')">Connect</button>
+             </div>`
+          : sfConns.map(sc => {
+              const isActive = sfActive && sc.is_active;
+              return `<div style="border:${isActive?'2px solid #7DD3FC':'1px solid var(--g200)'};border-radius:var(--r);padding:.9rem 1rem;background:${isActive?'#F0F9FF':'var(--white)'};cursor:${isActive?'default':'pointer'};transition:box-shadow .15s" ${isActive?'':'onclick="dsActivateSfConn(\''+sc.conn_id+'\')"'}>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.35rem">
+                  <span style="font-size:1.25rem">❄️</span>
+                  <span style="font-size:.66rem;font-weight:600;padding:.18rem .45rem;border-radius:3px;background:${isActive?'#DBEAFE':'var(--g100)'};color:${isActive?'#1D4ED8':'var(--g500)'}">
+                    ${isActive?'● Active':'Snowflake'}
+                  </span>
+                </div>
+                <div style="font-size:.84rem;font-weight:700;color:var(--g900);margin-bottom:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sc.label}</div>
+                <div style="font-size:.74rem;color:var(--g500);margin-bottom:.6rem">${sc.sf_database} · ${sc.sf_schema}</div>
+                <div style="display:flex;gap:.4rem;align-items:center">
+                  ${isActive
+                    ? `<span style="font-size:.72rem;color:#1D4ED8;font-weight:600">✓ Using this source</span>
+                       <button class="ds-btn-outline" style="font-size:.72rem;padding:.28rem .65rem;margin-left:.5rem;color:var(--g500)" onclick="event.stopPropagation();dsSetBackend('sqlite')">Disconnect</button>`
+                    : `<button class="ds-btn" style="font-size:.72rem;padding:.28rem .65rem" onclick="event.stopPropagation();dsActivateSfConn('${sc.conn_id}')">Switch Here</button>`
+                  }
+                  ${sc.conn_id!=='sf_default'?`<button style="font-size:.72rem;padding:.28rem .55rem;background:transparent;color:var(--g400);border:1px solid var(--g200);border-radius:4px;cursor:pointer" onclick="event.stopPropagation();dsDeleteSfConn('${sc.conn_id}')" title="Remove">🗑</button>`:''}
+                </div>
+              </div>`;
+            }).join('')
+        }
+
+        ${uploadedSrcs.map(src=>`
+        <div style="border:${src.is_active&&sqliteActive?'2px solid #86EFAC':'1px solid var(--g200)'};border-radius:var(--r);padding:.9rem 1rem;background:${src.is_active&&sqliteActive?'#F0FDF4':'var(--white)'};cursor:${src.is_active&&sqliteActive?'default':'pointer'}" ${src.is_active&&sqliteActive?'':'onclick="dsActivateSource(\''+src.source_id+'\',\''+src.source_name+'\')"'}>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:.35rem">
+            <span style="font-size:1.25rem">📊</span>
+            <span style="font-size:.66rem;font-weight:600;padding:.18rem .45rem;border-radius:3px;background:${src.is_active&&sqliteActive?'#DCFCE7':'var(--g100)'};color:${src.is_active&&sqliteActive?'#15803D':'var(--g500)'}">${src.is_active&&sqliteActive?'● Active':'Excel'}</span>
+          </div>
+          <div style="font-size:.84rem;font-weight:700;color:var(--g900);margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${src.source_name}</div>
+          <div style="font-size:.74rem;color:var(--g500);margin-bottom:.6rem">${(src.member_count||0).toLocaleString()} members · ${(src.gap_count||0).toLocaleString()} gaps</div>
+          <div style="display:flex;gap:.4rem;align-items:center">
+            ${src.is_active&&sqliteActive?'<span style="font-size:.72rem;color:#15803D;font-weight:600">✓ Using this source</span>':'<button class="ds-btn" style="font-size:.72rem;padding:.28rem .65rem" onclick="event.stopPropagation();dsActivateSource(\''+src.source_id+'\',\''+src.source_name+'\')">Switch Here</button>'}
+            <button style="font-size:.72rem;padding:.28rem .55rem;background:transparent;color:var(--g400);border:1px solid var(--g200);border-radius:4px;cursor:pointer" onclick="event.stopPropagation();dsDeleteSource('${src.source_id}')" title="Delete">🗑</button>
           </div>
         </div>`).join('')}
+
       </div>
     </div>
 
-    <!-- Add New Source -->
+    <!-- ③ ADD NEW DATA -->
     <div class="ds-section">
-      <div class="ds-section-title">Connect a New Data Source</div>
-      <div class="ds-section-sub">Upload a single <strong>.xlsx file</strong> containing 3 sheets: <em>Plan Configuration</em>, <em>Member Roster</em>, and <em>Care Gap File</em>. Each sheet is detected and loaded automatically.</div>
+      <div class="ds-section-title">Add New Data Source</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.75rem;margin-top:.6rem">
 
-      <!-- Format guide collapsible -->
-      <details style="margin-top:.6rem;border:1px solid var(--g200);border-radius:var(--r);background:var(--g50)">
-        <summary style="padding:.5rem .75rem;cursor:pointer;font-size:.78rem;font-weight:600;color:var(--teal);user-select:none">Required Excel Format &amp; Column Guide</summary>
-        <div style="padding:.6rem .9rem .75rem;font-size:.76rem;line-height:1.6">
-          <p style="margin:0 0 .5rem;color:var(--g600)">Your Excel workbook must have exactly <strong>3 sheets</strong> with these names and columns:</p>
-
-          <div style="margin-bottom:.6rem">
-            <div style="font-weight:700;color:var(--g800);margin-bottom:.2rem">Sheet 1 — Plan Configuration</div>
-            <div style="font-family:monospace;background:var(--white);border:1px solid var(--g200);border-radius:4px;padding:.35rem .5rem;color:var(--g700)">
-              plan_id &nbsp;·&nbsp; plan_name &nbsp;·&nbsp; region &nbsp;·&nbsp; segment &nbsp;·&nbsp; current_star_rating &nbsp;·&nbsp; target_star_rating
-            </div>
-            <div style="color:var(--g500);margin-top:.2rem">One row per Medicare plan (e.g. P101, P102…). Star ratings should be decimals like 3.5, 4.0.</div>
+        <div style="border:1px solid var(--g200);border-radius:var(--r);padding:1rem;background:var(--white)">
+          <div style="font-size:1.1rem;margin-bottom:.35rem">📊 Upload Excel File</div>
+          <div style="font-size:.75rem;color:var(--g600);margin-bottom:.75rem">Import your own member roster, care gaps, and plan configuration from a single .xlsx file.</div>
+          <div id="drop-zone" class="ds-drop-zone" style="padding:.6rem;min-height:70px"
+            ondragover="event.preventDefault();this.classList.add('dragover')"
+            ondragleave="this.classList.remove('dragover')"
+            ondrop="dsHandleDropMain(event)"
+            onclick="document.getElementById('file-input-main').click()">
+            <div class="ds-drop-icon" style="font-size:1.2rem">📎</div>
+            <p style="font-size:.78rem;color:var(--g600);margin:.15rem 0">Drop .xlsx / .csv here, or <span style="color:var(--teal);text-decoration:underline;cursor:pointer">browse</span></p>
+            <input type="file" id="file-input-main" accept=".csv,.xlsx" style="display:none" onchange="dsHandleFileMain(this.files[0])">
           </div>
-
-          <div style="margin-bottom:.6rem">
-            <div style="font-weight:700;color:var(--g800);margin-bottom:.2rem">Sheet 2 — Member Roster</div>
-            <div style="font-family:monospace;background:var(--white);border:1px solid var(--g200);border-radius:4px;padding:.35rem .5rem;color:var(--g700)">
-              member_id &nbsp;·&nbsp; plan_id &nbsp;·&nbsp; first_name &nbsp;·&nbsp; last_name &nbsp;·&nbsp; date_of_birth &nbsp;·&nbsp; gender &nbsp;·&nbsp; language &nbsp;·&nbsp; digital_literacy &nbsp;·&nbsp; email_allowed &nbsp;·&nbsp; sms_allowed &nbsp;·&nbsp; call_allowed &nbsp;·&nbsp; preferred_channel
-            </div>
-            <div style="color:var(--g500);margin-top:.2rem">One row per member. Allowed values: <code>email_allowed</code>/<code>sms_allowed</code>/<code>call_allowed</code> = 1 or 0. <code>digital_literacy</code> = High/Medium/Low. <code>language</code> = English/Spanish/Mandarin etc.</div>
-          </div>
-
-          <div style="margin-bottom:.5rem">
-            <div style="font-weight:700;color:var(--g800);margin-bottom:.2rem">Sheet 3 — Care Gap File</div>
-            <div style="font-family:monospace;background:var(--white);border:1px solid var(--g200);border-radius:4px;padding:.35rem .5rem;color:var(--g700)">
-              member_id &nbsp;·&nbsp; plan_id &nbsp;·&nbsp; measure_code &nbsp;·&nbsp; gap_status &nbsp;·&nbsp; nba_propensity_score &nbsp;·&nbsp; days_open
-            </div>
-            <div style="color:var(--g500);margin-top:.2rem">One row per member × measure gap. <code>measure_code</code> = BCS, COL, EED, CBP, MAD, etc. <code>gap_status</code> = open / borderline / closed. <code>nba_propensity_score</code> = 0.0–1.0.</div>
-          </div>
-
-          <div style="background:var(--amber-l,#fffbeb);border:1px solid var(--amber,#f59e0b);border-radius:4px;padding:.35rem .6rem;color:var(--amber-d,#92400e);font-size:.74rem">
-            ⚠ Sheet names must contain the words <strong>Plan</strong>, <strong>Member</strong>, and <strong>Gap</strong> or <strong>Care</strong>. Column names are case-insensitive and common aliases are accepted (e.g. <em>plan_key</em> instead of <em>plan_id</em>). Download the template below to get the exact format.
+          ${DS.file?`<div style="font-size:.73rem;color:var(--teal);margin-top:.4rem">✔ ${DS.file.name} ready</div>`:''}
+          <div style="display:flex;gap:.4rem;margin-top:.6rem;flex-wrap:wrap">
+            <button class="ds-btn" style="font-size:.73rem;padding:.28rem .7rem" onclick="dsOpenUploadModal()">⬆ Upload &amp; Analyze</button>
+            <button class="ds-btn-outline" style="font-size:.73rem;padding:.28rem .7rem" onclick="dsShowExcelFormat()">? Format Guide</button>
           </div>
         </div>
-      </details>
 
-      <!-- Drag-drop zone -->
-      <div id="drop-zone" class="ds-drop-zone" style="margin-top:.85rem"
-        ondragover="event.preventDefault();this.classList.add('dragover')"
-        ondragleave="this.classList.remove('dragover')"
-        ondrop="dsHandleDropMain(event)"
-        onclick="document.getElementById('file-input-main').click()">
-        <div class="ds-drop-icon">📊</div>
-        <p style="font-size:.85rem;color:var(--g600);margin:.25rem 0">Drag &amp; drop your Excel or CSV file here</p>
-        <p style="font-size:.76rem;color:var(--g400)">or <span style="color:var(--teal);cursor:pointer;text-decoration:underline">browse files</span></p>
-        <input type="file" id="file-input-main" accept=".csv,.xlsx" style="display:none" onchange="dsHandleFileMain(this.files[0])">
-        <p style="font-size:.7rem;color:var(--g300);margin-top:.4rem">Accepts: .xlsx (recommended) · .csv · Max 50MB</p>
+        <!-- Connect Snowflake DB -->
+        <div style="border:1px solid var(--g200);border-radius:var(--r);padding:1rem;background:var(--white)">
+          <div style="font-size:1.1rem;margin-bottom:.25rem">❄️ Add Snowflake Database</div>
+          <div style="font-size:.75rem;color:var(--g600);margin-bottom:.75rem">Add another database or schema from your connected Snowflake account (${sfAccount}).</div>
+          <div style="display:flex;flex-direction:column;gap:.45rem">
+            <input id="sf-new-label" type="text" placeholder="Label (e.g. Production Data)" style="font-size:.78rem;padding:.38rem .6rem;border:1px solid var(--g300);border-radius:5px;width:100%;box-sizing:border-box;background:var(--white);color:var(--g900)">
+            <input id="sf-new-db" type="text" placeholder="Database (e.g. CAREINTEL_PROD)" style="font-size:.78rem;padding:.38rem .6rem;border:1px solid var(--g300);border-radius:5px;width:100%;box-sizing:border-box;background:var(--white);color:var(--g900);text-transform:uppercase">
+            <div style="display:flex;gap:.4rem">
+              <input id="sf-new-schema" type="text" placeholder="Schema (NBA)" value="NBA" style="font-size:.78rem;padding:.38rem .6rem;border:1px solid var(--g300);border-radius:5px;flex:1;background:var(--white);color:var(--g900);text-transform:uppercase">
+              <input id="sf-new-wh" type="text" placeholder="Warehouse" value="COMPUTE_WH" style="font-size:.78rem;padding:.38rem .6rem;border:1px solid var(--g300);border-radius:5px;flex:1;background:var(--white);color:var(--g900);text-transform:uppercase">
+            </div>
+            <div id="sf-new-status" style="font-size:.72rem;min-height:1.1rem"></div>
+            <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+              <button class="ds-btn-outline" style="font-size:.73rem;padding:.28rem .7rem" onclick="dsTestSfConn()">🔌 Test Connection</button>
+              <button class="ds-btn" style="font-size:.73rem;padding:.28rem .7rem" onclick="dsAddSfConn()">+ Add Database</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--g200);border-radius:var(--r);padding:1rem;background:var(--white)">
+          <div style="font-size:1.1rem;margin-bottom:.35rem">🗃️ SQLite / Local Database</div>
+          <div style="font-size:.75rem;color:var(--g600);margin-bottom:.75rem">Connect a local SQLite database file with your own member and gap data.</div>
+          <button class="ds-btn-outline" style="font-size:.73rem;padding:.28rem .7rem;opacity:.6;cursor:not-allowed" disabled>+ Upload SQLite File <span style="font-size:.64rem;margin-left:.3rem;background:var(--g100);padding:.1rem .3rem;border-radius:3px">Soon</span></button>
+        </div>
       </div>
 
-      ${DS.file?`<div class="ds-file-chosen" style="margin-top:.5rem">✔ ${DS.file.name} (${(DS.file.size/1024).toFixed(1)} KB) — <span style="color:var(--g500)">ready to upload</span></div>`:''}
-
-      <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
-        <button class="ds-btn" onclick="dsOpenUploadModal()">⬆ Upload &amp; Analyze</button>
-      </div>
-    </div>
-
-    <!-- Template Downloads -->
-    <div class="ds-section">
-      <div class="ds-section-title">Download Data Templates</div>
-      <div class="ds-section-sub">Download the correct column format before uploading your data.</div>
-      <div class="ds-tpl-row" style="margin-top:.65rem">
-        <button class="ds-btn-outline" onclick="dsDownloadTemplate('members')">↓ Member Template</button>
-        <button class="ds-btn-outline" onclick="dsDownloadTemplate('gaps')">↓ Gap Template</button>
-        <button class="ds-btn-outline" onclick="dsDownloadTemplate('plans')">↓ Plan Template</button>
-      </div>
-    </div>
-
-    <!-- Coming Soon Connectors -->
-    <div class="ds-section">
-      <div class="ds-section-title" style="color:var(--g400)">More Connectors — Coming Soon</div>
-      <div style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.65rem">
-        ${['Snowflake','Databricks','SQL Server','BigQuery','Azure Synapse','Redshift'].map(name=>`
-        <div style="border:1px solid var(--g200);border-radius:var(--r);padding:.6rem .9rem;background:var(--white);display:flex;align-items:center;gap:.5rem">
-          <span style="font-size:.78rem;font-weight:600;color:var(--g500)">${name}</span>
-          <span style="font-size:.65rem;padding:.1rem .4rem;background:var(--g100);color:var(--g400);border-radius:3px">Coming Soon</span>
-          <button style="font-size:.67rem;padding:.1rem .4rem;background:none;border:1px solid var(--g200);border-radius:3px;color:var(--g400);cursor:pointer" onclick="dsNotifyMe('${name}')">Notify me</button>
-        </div>`).join('')}
-      </div>
-    </div>
-
-    <!-- Current Data Status -->
-    <div class="ds-section">
-      <div class="ds-section-title">Current Data Status</div>
-      <div class="ds-status-table">
-        <table>
-          <thead><tr><th>Data Source</th><th>Records</th><th>Status</th><th>Last Updated</th></tr></thead>
-          <tbody>
-            <tr><td>Member Roster</td><td>${(s.members?.count||0).toLocaleString()}</td><td><span class="badge badge-green">Active</span></td><td>${s.members?.updated||'—'}</td></tr>
-            <tr><td>Care Gaps</td><td>${(s.gaps?.count||0).toLocaleString()}</td><td><span class="badge badge-green">Active</span></td><td>${s.gaps?.updated||'—'}</td></tr>
-            <tr><td>Plan Contracts</td><td>${(s.plans?.count||0).toLocaleString()}</td><td><span class="badge badge-green">Active</span></td><td>${s.plans?.updated||'—'}</td></tr>
-            <tr><td>NBA Sessions</td><td>${(s.runs?.count||0).toLocaleString()}</td><td><span class="badge badge-blue">Runs</span></td><td>—</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-        <button class="ds-btn-danger" onclick="dsResetData()" id="ds-reset-btn">
-          ${DS.resetting ? '<span class="ds-spinner"></span>Restoring…' : '↺ Reset to Demo Data'}
-        </button>
-        <span style="font-size:.74rem;color:var(--g400)">Restores all synthetic demo data</span>
+      <div id="ds-excel-guide" style="display:none;margin-top:.85rem">
+        <details open style="border:1px solid var(--g200);border-radius:var(--r);background:var(--g50)">
+          <summary style="padding:.5rem .75rem;cursor:pointer;font-size:.78rem;font-weight:600;color:var(--teal);user-select:none">Required Excel Format &amp; Column Guide</summary>
+          <div style="padding:.6rem .9rem .75rem;font-size:.76rem;line-height:1.6">
+            <p style="margin:0 0 .5rem;color:var(--g600)">Your workbook must have <strong>3 sheets</strong>: <em>Plan Configuration</em>, <em>Member Roster</em>, and <em>Care Gap File</em>.</p>
+            <div style="margin-bottom:.4rem"><span style="font-weight:700">Sheet 1 — Plan:</span> <code>plan_id · plan_name · region · segment · current_star_rating · target_star_rating</code></div>
+            <div style="margin-bottom:.4rem"><span style="font-weight:700">Sheet 2 — Members:</span> <code>member_id · plan_id · first_name · last_name · dob · gender · language · digital_literacy · email_allowed · sms_allowed · call_allowed · preferred_channel</code></div>
+            <div style="margin-bottom:.6rem"><span style="font-weight:700">Sheet 3 — Gaps:</span> <code>member_id · plan_id · measure_code · gap_status · nba_propensity_score · days_open</code></div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <button class="ds-btn-outline" style="font-size:.72rem;padding:.25rem .6rem" onclick="dsDownloadTemplate('members')">↓ Member Template</button>
+              <button class="ds-btn-outline" style="font-size:.72rem;padding:.25rem .6rem" onclick="dsDownloadTemplate('gaps')">↓ Gap Template</button>
+              <button class="ds-btn-outline" style="font-size:.72rem;padding:.25rem .6rem" onclick="dsDownloadTemplate('plans')">↓ Plan Template</button>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
+
   </div>
 
   <!-- Upload Modal -->
@@ -4145,6 +4259,75 @@ async function dsDeleteSource(sourceId) {
     await loadSources();
     renderDataSources();
   } catch(e) { alert('Failed to delete: ' + e); }
+}
+
+// ── Snowflake multi-connection functions ─────────────────────────────────────
+
+async function dsActivateSfConn(connId) {
+  try {
+    const r = await fetch(`${API}/data/snowflake-connections/${connId}/activate`, {method:'POST'});
+    if (!r.ok) { const e=await r.json(); _aiToast('⚠️ '+e.detail, true); return; }
+    _dsMode = 'snowflake';
+    DS.sfConns = null; DS.status = null; DS.sources = [];
+    await Promise.all([loadSfConnections(), loadDataStatus(), loadSources()]);
+    renderDataSources();
+    _aiToast('Switched to Snowflake database', false);
+    if (typeof refreshOpportunities==='function') refreshOpportunities();
+  } catch(e) { _aiToast('⚠️ '+e.message, true); }
+}
+
+async function dsDeleteSfConn(connId) {
+  if (!confirm('Remove this Snowflake database from the switcher?')) return;
+  try {
+    await fetch(`${API}/data/snowflake-connections/${connId}`, {method:'DELETE'});
+    DS.sfConns = null;
+    await loadSfConnections();
+    renderDataSources();
+  } catch(e) { _aiToast('⚠️ Failed to remove: '+e.message, true); }
+}
+
+async function dsTestSfConn() {
+  const db = document.getElementById('sf-new-db').value.trim().toUpperCase();
+  const sc = document.getElementById('sf-new-schema').value.trim().toUpperCase() || 'NBA';
+  const wh = document.getElementById('sf-new-wh').value.trim().toUpperCase() || 'COMPUTE_WH';
+  const st = document.getElementById('sf-new-status');
+  if (!db) { st.textContent='⚠️ Enter a database name first'; st.style.color='var(--red)'; return; }
+  st.textContent = '⏳ Testing connection…'; st.style.color = 'var(--g500)';
+  try {
+    const r = await fetch(`${API}/data/snowflake-connections/test`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({database:db, schema:sc, warehouse:wh})
+    });
+    const d = await r.json();
+    if (!r.ok) { st.textContent='❌ '+d.detail; st.style.color='var(--red)'; return; }
+    st.textContent = `✅ Connected — ${(d.gap_count||0).toLocaleString()} gaps found in ${db}.${sc}`;
+    st.style.color = '#15803D';
+  } catch(e) { st.textContent='❌ '+e.message; st.style.color='var(--red)'; }
+}
+
+async function dsAddSfConn() {
+  const label = document.getElementById('sf-new-label').value.trim();
+  const db    = document.getElementById('sf-new-db').value.trim().toUpperCase();
+  const sc    = document.getElementById('sf-new-schema').value.trim().toUpperCase() || 'NBA';
+  const wh    = document.getElementById('sf-new-wh').value.trim().toUpperCase() || 'COMPUTE_WH';
+  const st    = document.getElementById('sf-new-status');
+  if (!label) { st.textContent='⚠️ Enter a label'; st.style.color='var(--red)'; return; }
+  if (!db)    { st.textContent='⚠️ Enter a database name'; st.style.color='var(--red)'; return; }
+  st.textContent='⏳ Adding…'; st.style.color='var(--g500)';
+  try {
+    const r = await fetch(`${API}/data/snowflake-connections`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({label, database:db, schema:sc, warehouse:wh})
+    });
+    const d = await r.json();
+    if (!r.ok) { st.textContent='❌ '+(d.detail||'Failed'); st.style.color='var(--red)'; return; }
+    st.textContent='✅ Added! Switch to it from the Connected Sources above.'; st.style.color='#15803D';
+    document.getElementById('sf-new-label').value='';
+    document.getElementById('sf-new-db').value='';
+    DS.sfConns = null;
+    await loadSfConnections();
+    renderDataSources();
+  } catch(e) { st.textContent='❌ '+e.message; st.style.color='var(--red)'; }
 }
 
 async function dsDownloadTemplate(type) {
